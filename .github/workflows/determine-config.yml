@@ -1,0 +1,81 @@
+name: 🔍 Determine Configuration
+
+on:
+  workflow_call:
+    inputs:
+      branch:
+        required: true
+        type: string
+
+jobs:
+  set-config:
+    runs-on: ubuntu-latest
+    environment: ${{ inputs.branch }} # Dynamically set the environment based on the branch
+
+    steps:
+      - name: 🔧 Determine Environment and Set Variables
+        id: set-env
+        shell: bash
+        run: |
+          # Determine environment based on branch
+          branch="${{ inputs.branch }}"
+          case "$branch" in
+            production)
+              configuration="Release"
+              build_flag="prod"
+              app_domain="${{ vars.DOMAIN }}.co.uk"
+              app_environment="production"
+              ;;
+            development)
+              configuration="Debug"
+              build_flag="dev"
+              app_domain="${{ vars.DOMAIN }}-dev.co.uk"
+              app_environment="development"
+              ;;
+            training)
+              configuration="Debug"
+              build_flag="train"
+              app_domain="${{ vars.DOMAIN }}-train.co.uk"
+              app_environment="training"
+              ;;
+            *)
+              configuration="Debug"
+              build_flag="dev"
+              app_domain="${{ vars.DOMAIN }}-dev.co.uk"
+              app_environment="development"
+              ;;
+          esac
+
+          # Create artifact JSON
+          echo "Creating artifact configuration.json"
+          # Serialize vars and secrets into JSON strings provided by GitHub Actions
+          vars_json='${{ toJson(vars) }}'
+          secrets_json='${{ toJson(secrets) }}'
+
+          # Create the final JSON configuration dynamically
+          jq -n \
+            --arg configuration "$configuration" \
+            --arg build_flag "$build_flag" \
+            --arg app_domain "$app_domain" \
+            --arg app_environment "$app_environment" \
+            --argjson static_variables "$vars_json" \
+            --argjson static_secrets "$secrets_json" \
+            '{
+              configuration: $configuration,
+              build_flag: $build_flag,
+              app_domain: $app_domain,
+              app_environment: $app_environment,
+              static_variables: $static_variables,
+              static_secrets: $static_secrets
+            }' > configuration.json
+
+      - name: Validate JSON File
+        run: |
+          echo "Configuration JSON:"
+          cat configuration.json
+
+      - name: 📤 Upload Configuration as Artifact
+        uses: actions/upload-artifact@v3
+        with:
+          name: configuration
+          path: configuration.json

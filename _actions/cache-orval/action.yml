@@ -1,0 +1,37 @@
+name: "Cache and Generate Orval APIs"
+description: "Caches Orval files and regenerates APIs if the cache is missing."
+author: "Your Name"
+inputs:
+  working-directory:
+    description: "Working directory for Orval commands."
+    required: true
+  api-path:
+    description: "Path to the API files to cache."
+    required: true
+  swagger-path:
+    description: "Path to swagger files for hashing the cache key."
+    required: true
+  orval-config:
+    description: "Path to the Orval configuration file."
+    required: true
+
+runs:
+  using: "composite"
+  steps:
+    - name: 📥 Checkout Code
+      uses: actions/checkout@v4
+
+    - name: 📦 Cache Orval Files
+      id: cache-orval-files
+      uses: ./../../../_actions/CacheWith7z/v1.0.4
+      with:
+        path: ${{ inputs.api-path }}
+        key: ${{ runner.os }}-orval-${{ hashFiles(inputs.swagger-path, inputs.orval-config) }}
+        restore-keys: |
+          ${{ runner.os }}-orval-
+
+    - name: 🛠️ Generate APIs with Orval
+      if: steps.cache-orval-files.outputs.cache-hit != 'true'
+      run: npm run orval:cache
+      shell: pwsh
+      working-directory: ${{ inputs.working-directory }}
