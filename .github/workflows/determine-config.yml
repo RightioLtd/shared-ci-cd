@@ -6,6 +6,9 @@ on:
       branch:
         required: true
         type: string
+    secrets:
+      personal_access_token:
+        required: true
 
 jobs:
   set-config:
