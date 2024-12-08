@@ -1,6 +1,6 @@
 name: "Cache and Generate Orval APIs"
 description: "Caches Orval files and regenerates APIs if the cache is missing."
-author: "Your Name"
+author: "Adam Rzymski"
 inputs:
   working-directory:
     description: "Working directory for Orval commands."
@@ -27,7 +27,7 @@ runs:
         if (!(Test-Path -Path ${{ inputs.api-path }})) {
           New-Item -Path ${{ inputs.api-path }} -ItemType Directory
         }
-      shell: pwsh
+      shell: powershell
 
     - name: 📦 Cache Orval Files
       id: cache-orval-files
@@ -41,5 +41,5 @@ runs:
     - name: 🛠️ Generate APIs with Orval
       if: steps.cache-orval-files.outputs.cache-hit != 'true'
       run: npm run orval:cache
-      shell: pwsh
+      shell: powershell
       working-directory: ${{ inputs.working-directory }}
