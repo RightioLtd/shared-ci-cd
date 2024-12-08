@@ -20,6 +20,7 @@ runs:
   steps:
     - name: 📥 Checkout Code
       uses: actions/checkout@v4
+      shell: pwsh
 
     - name: 📂 Create API Directory
       run: |
