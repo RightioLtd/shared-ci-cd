@@ -21,6 +21,13 @@ runs:
     - name: 📥 Checkout Code
       uses: actions/checkout@v4
 
+    - name: 📂 Create API Directory
+      run: |
+        #  Create the API directory if it doesn't exist in powershell
+        if (!(Test-Path -Path ${{ inputs.api-path }})) {
+          New-Item -Path ${{ inputs.api-path }} -ItemType Directory
+        }
+
     - name: 📦 Cache Orval Files
       id: cache-orval-files
       uses: ./../../../_actions/CacheWith7z/v1.0.4
