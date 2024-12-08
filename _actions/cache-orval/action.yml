@@ -20,9 +20,9 @@ runs:
   steps:
     - name: 📥 Checkout Code
       uses: actions/checkout@v4
-      shell: pwsh
 
     - name: 📂 Create API Directory
+      shell: pwsh
       run: |
         #  Create the API directory if it doesn't exist in powershell
         if (!(Test-Path -Path ${{ inputs.api-path }})) {
