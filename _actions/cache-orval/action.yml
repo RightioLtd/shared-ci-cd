@@ -18,16 +18,16 @@ inputs:
 runs:
   using: "composite"
   steps:
-    - name: 📥 Checkout Code
-      uses: actions/checkout@v4
+    # - name: 📥 Checkout Code
+    #   uses: actions/checkout@v4
 
     - name: 📂 Create API Directory
-      shell: pwsh
       run: |
         #  Create the API directory if it doesn't exist in powershell
         if (!(Test-Path -Path ${{ inputs.api-path }})) {
           New-Item -Path ${{ inputs.api-path }} -ItemType Directory
         }
+      shell: pwsh
 
     - name: 📦 Cache Orval Files
       id: cache-orval-files
