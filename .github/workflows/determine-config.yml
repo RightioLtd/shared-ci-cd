@@ -134,25 +134,28 @@ jobs:
           MAPPED_SECRETS_JSON: ${{ env.MAPPED_SECRETS_JSON }}
         run: |
           set -euo pipefail
-          vars_json="$RAW_VARS_JSON"
-          secrets_json="$MAPPED_SECRETS_JSON"
-
+      
+          # Re-parse the JSON to ensure we have proper JSON objects
+          vars_json=$(echo "$RAW_VARS_JSON" | jq -c .)
+          secrets_json=$(echo "$MAPPED_SECRETS_JSON" | jq -c .)
+      
           if [ "$APP_ENVIRONMENT" = "production" ]; then
-            # Remove DEV unless APPSETTINGS__
-            vars_json=$(echo "$vars_json" | jq 'to_entries | map(select(.key|startswith("APPSETTINGS__") or (.key|test("DEV"; "i")|not))) | from_entries')
-            secrets_json=$(echo "$secrets_json" | jq 'to_entries | map(select(.key|startswith("APPSETTINGS__") or (.key|test("DEV"; "i")|not))) | from_entries')
+            # Always remove DEV keys, no exception
+            vars_json=$(echo "$vars_json" | jq 'to_entries | map(select(.key | test("DEV"; "i") | not)) | from_entries')
+            secrets_json=$(echo "$secrets_json" | jq 'to_entries | map(select(.key | test("DEV"; "i") | not)) | from_entries')
           else
-            # Remove PROD unless APPSETTINGS__
-            vars_json=$(echo "$vars_json" | jq 'to_entries | map(select(.key|startswith("APPSETTINGS__") or (.key|test("PROD"; "i")|not))) | from_entries')
-            secrets_json=$(echo "$secrets_json" | jq 'to_entries | map(select(.key|startswith("APPSETTINGS__") or (.key|test("PROD"; "i")|not))) | from_entries')
+            # Always remove PROD keys, no exception
+            vars_json=$(echo "$vars_json" | jq 'to_entries | map(select(.key | test("PROD"; "i") | not)) | from_entries')
+            secrets_json=$(echo "$secrets_json" | jq 'to_entries | map(select(.key | test("PROD"; "i") | not)) | from_entries')
           fi
-
+      
           # Normalize keys: remove _DEV_ or _PROD_
           vars_json=$(echo "$vars_json" | jq 'to_entries | map(.key |= sub("_(DEV|PROD)_"; "_"; "i")) | from_entries')
           secrets_json=$(echo "$secrets_json" | jq 'to_entries | map(.key |= sub("_(DEV|PROD)_"; "_"; "i")) | from_entries')
-
+      
           echo "ENV_FILTERED_VARS_JSON=$(echo "$vars_json" | jq -c .)" >> $GITHUB_ENV
           echo "ENV_FILTERED_SECRETS_JSON=$(echo "$secrets_json" | jq -c .)" >> $GITHUB_ENV
+      
 
       # -------------------------------------------
       # Step 6: Prefix Filtering if Needed
