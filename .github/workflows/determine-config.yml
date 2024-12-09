@@ -27,7 +27,7 @@ jobs:
         run: |
           echo "ALLOW_PREFIX=${{ inputs.allowSecretsPrefix }}" >> $GITHUB_ENV
           echo "SELECTED_BRANCH=${{ inputs.branch }}" >> $GITHUB_ENV
-          echo "MAP_TO_APPSETTINGS_SECRETS=${{ inputs.mapoAppSettingsSecrets }}" >> $GITHUB_ENV
+          echo "MAP_TO_APPSETTINGS_SECRETS=${{ inputs.mapToAppSettingsSecrets }}" >> $GITHUB_ENV
 
       # -------------------------------------------
       # Step 2: Determine Configuration Settings
@@ -113,8 +113,12 @@ jobs:
           secrets_json=$(jq 'to_entries | map(.key |= sub("_(DEV|PROD)_"; "_"; "i")) | from_entries' <<< "$secrets_json")
 
           # Write filtered JSON to environment
-          echo "VARS_JSON=$vars_json" >> $GITHUB_ENV
-          echo "SECRETS_JSON=$secrets_json" >> $GITHUB_ENV
+          # Use jq -c to ensure single-line output suitable for GITHUB_ENV
+          vars_json_compact=$(echo "$vars_json" | jq -c .)
+          secrets_json_compact=$(echo "$secrets_json" | jq -c .)
+
+          echo "VARS_JSON=$vars_json_compact" >> $GITHUB_ENV
+          echo "SECRETS_JSON=$secrets_json_compact" >> $GITHUB_ENV
 
       # -------------------------------------------
       # Step 4: Optionally Map Secrets to AppSettings Format
@@ -124,13 +128,13 @@ jobs:
         id: map-to-appsettings
         shell: bash
         env:
-          MAPT_TO_APPSETTINGS_SECRETS: ${{ env.MAP_TO_APPSETTINGS_SECRETS }}
+          MAP_TO_APPSETTINGS_SECRETS: ${{ env.MAP_TO_APPSETTINGS_SECRETS }}
           SECRETS_JSON: ${{ env.SECRETS_JSON }}
         run: |
           set -euo pipefail
 
           # Split the comma-separated list of prefixes
-          prefixes=$(echo "$MAPT_TO_APPSETTINGS_SECRETS" | tr ',' ' ')
+          prefixes=$(echo "$MAP_TO_APPSETTINGS_SECRETS" | tr ',' ' ')
 
           transformed="$SECRETS_JSON"
 
@@ -149,7 +153,9 @@ jobs:
             ' <<< "$transformed")
           done
 
-          echo "SECRETS_JSON=$transformed" >> $GITHUB_ENV
+          # Convert to single-line before writing to GITHUB_ENV
+          transformed_compact=$(echo "$transformed" | jq -c .)
+          echo "SECRETS_JSON=$transformed_compact" >> $GITHUB_ENV
 
       # -------------------------------------------
       # Step 5: Create configuration.json Artifact
