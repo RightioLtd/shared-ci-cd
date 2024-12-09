@@ -19,14 +19,18 @@ jobs:
     environment: ${{ (inputs.branch == 'main' || inputs.branch == 'master') && 'production' || (inputs.branch == 'development') && 'development' || (inputs.branch == 'training' && 'training') || 'development' }}
 
     steps:
+      # -------------------------------------------
       # Step 1: Prepare Environment Variables
+      # -------------------------------------------
       - name: 🔧 Prepare Environment Variables
         run: |
           echo "ALLOW_PREFIX=${{ inputs.allowSecretsPrefix }}" >> $GITHUB_ENV
           echo "SELECTED_BRANCH=${{ inputs.branch }}" >> $GITHUB_ENV
           echo "MAP_TO_APPSETTINGS_SECRETS=${{ inputs.mapToAppSettingsSecrets }}" >> $GITHUB_ENV
 
+      # -------------------------------------------
       # Step 2: Determine Configuration Settings
+      # -------------------------------------------
       - name: 🔧 Determine Configuration Settings
         id: determine-config
         shell: bash
@@ -69,7 +73,9 @@ jobs:
           echo "APP_ENVIRONMENT=$app_environment" >> $GITHUB_ENV
           echo "environment=$app_environment" >> $GITHUB_OUTPUT
 
-      # Step 3: Extract All Vars and Secrets (No Filtering Yet)
+      # -------------------------------------------
+      # Step 3: Extract Vars and Secrets (Raw)
+      # -------------------------------------------
       - name: 🔧 Extract Vars and Secrets
         shell: bash
         run: |
@@ -80,66 +86,46 @@ jobs:
           echo "RAW_SECRETS_JSON=$(echo "$secrets_json" | jq -c .)" >> $GITHUB_ENV
 
       # -------------------------------------------
-      # Step 4: Optionally Map Secrets to AppSettings Format
-      # and remove any secrets starting with SSH_
+      # Step 4: Remove SSH_ Secrets and Optionally Map to AppSettings
       # -------------------------------------------
-      - name: 🔧 Map Secrets to AppSettings Format (Optional)
-        if: ${{ env.MAP_TO_APPSETTINGS_SECRETS != '' }}
-        id: map-to-appsettings
+      - name: 🔧 Process Secrets (Remove SSH_, Map if needed)
         shell: bash
         env:
-          MAP_TO_APPSETTINGS_SECRETS: ${{ env.MAP_TO_APPSETTINGS_SECRETS }}
           RAW_SECRETS_JSON: ${{ env.RAW_SECRETS_JSON }}
+          MAP_TO_APPSETTINGS_SECRETS: ${{ env.MAP_TO_APPSETTINGS_SECRETS }}
         run: |
           set -euo pipefail
-          prefixes=$(echo "$MAP_TO_APPSETTINGS_SECRETS" | tr ',' ' ')
-          transformed="$RAW_SECRETS_JSON"
 
-          # Rename keys starting with given prefixes to APPSETTINGS__ format
-          for prefix in $prefixes; do
-            transformed=$(echo "$transformed" | jq --arg prefix "$prefix" '
-              to_entries
-              | map(
-                  if .key | startswith($prefix) then
-                    .key = ("APPSETTINGS__" + (.key | sub("^" + $prefix; "")))
-                  else
-                    .
-                  end
-                )
-              | from_entries
-            ')
-          done
-
-          # Remove any secrets starting with SSH_
-          transformed=$(echo "$transformed" | jq '
+          # 1. Remove SSH_ secrets
+          cleaned=$(echo "$RAW_SECRETS_JSON" | jq '
             to_entries
             | map(select(.key | startswith("SSH_") | not))
             | from_entries
           ')
 
-          transformed_compact=$(echo "$transformed" | jq -c .)
-          echo "MAPPED_SECRETS_JSON=$transformed_compact" >> $GITHUB_ENV
+          # 2. If mapToAppSettingsSecrets is provided, rename keys to start with APPSETTINGS__
+          if [ -n "${MAP_TO_APPSETTINGS_SECRETS}" ]; then
+            prefixes=$(echo "$MAP_TO_APPSETTINGS_SECRETS" | tr ',' ' ')
+            for prefix in $prefixes; do
+              cleaned=$(echo "$cleaned" | jq --arg prefix "$prefix" '
+                to_entries
+                | map(
+                    if .key | startswith($prefix) then
+                      .key = ("APPSETTINGS__" + (.key | sub("^" + $prefix; "")))
+                    else
+                      .
+                    end
+                  )
+                | from_entries
+              ')
+            done
+          fi
 
-      # If no mapping provided, just pass through RAW_SECRETS_JSON but still remove SSH_ secrets
-      - name: 🔧 Use Raw Secrets if No Mapping Provided & Remove SSH_ Keys
-        if: ${{ env.MAP_TO_APPSETTINGS_SECRETS == '' }}
-        run: |
-          set -euo pipefail
-          # Remove any secrets starting with SSH_ even if no mapping is done
-          cleaned=$(echo "${RAW_SECRETS_JSON}" | jq '
-            to_entries
-            | map(select(.key | startswith("SSH_") | not))
-            | from_entries
-          ')
-          cleaned_compact=$(echo "$cleaned" | jq -c .)
-          echo "MAPPED_SECRETS_JSON=$cleaned_compact" >> $GITHUB_ENV
+          echo "MAPPED_SECRETS_JSON=$(echo "$cleaned" | jq -c .)" >> $GITHUB_ENV
 
-
-      - name: 🔧 Use Raw Secrets if No Mapping Provided
-        if: ${{ env.MAP_TO_APPSETTINGS_SECRETS == '' }}
-        run: echo "MAPPED_SECRETS_JSON=${{ env.RAW_SECRETS_JSON }}" >> $GITHUB_ENV
-
-      # Step 5: Environment-Based Filtering Without Removing APPSETTINGS__ Keys
+      # -------------------------------------------
+      # Step 5: Environment-Based Filtering
+      # -------------------------------------------
       - name: 🔧 Apply Environment-Based Filtering
         shell: bash
         env:
@@ -151,12 +137,12 @@ jobs:
           vars_json="$RAW_VARS_JSON"
           secrets_json="$MAPPED_SECRETS_JSON"
 
-          # If APP_ENVIRONMENT=production, remove DEV (except APPSETTINGS__ keys)
-          # If not production, remove PROD (except APPSETTINGS__ keys)
           if [ "$APP_ENVIRONMENT" = "production" ]; then
+            # Remove DEV unless APPSETTINGS__
             vars_json=$(echo "$vars_json" | jq 'to_entries | map(select(.key|startswith("APPSETTINGS__") or (.key|test("DEV"; "i")|not))) | from_entries')
             secrets_json=$(echo "$secrets_json" | jq 'to_entries | map(select(.key|startswith("APPSETTINGS__") or (.key|test("DEV"; "i")|not))) | from_entries')
           else
+            # Remove PROD unless APPSETTINGS__
             vars_json=$(echo "$vars_json" | jq 'to_entries | map(select(.key|startswith("APPSETTINGS__") or (.key|test("PROD"; "i")|not))) | from_entries')
             secrets_json=$(echo "$secrets_json" | jq 'to_entries | map(select(.key|startswith("APPSETTINGS__") or (.key|test("PROD"; "i")|not))) | from_entries')
           fi
@@ -168,7 +154,9 @@ jobs:
           echo "ENV_FILTERED_VARS_JSON=$(echo "$vars_json" | jq -c .)" >> $GITHUB_ENV
           echo "ENV_FILTERED_SECRETS_JSON=$(echo "$secrets_json" | jq -c .)" >> $GITHUB_ENV
 
-      # Step 6: Apply Prefix Filtering (if needed) after everything else
+      # -------------------------------------------
+      # Step 6: Prefix Filtering if Needed
+      # -------------------------------------------
       - name: 🔧 Apply Prefix Filtering
         if: ${{ env.ALLOW_PREFIX != '' }}
         shell: bash
@@ -194,7 +182,9 @@ jobs:
           echo "VARS_JSON=${{ env.ENV_FILTERED_VARS_JSON }}" >> $GITHUB_ENV
           echo "SECRETS_JSON=${{ env.ENV_FILTERED_SECRETS_JSON }}" >> $GITHUB_ENV
 
+      # -------------------------------------------
       # Step 7: Create configuration.json
+      # -------------------------------------------
       - name: 📝 Create configuration.json
         id: create-config-file
         shell: bash
@@ -225,19 +215,25 @@ jobs:
               static_secrets: $static_secrets
             }' > configuration.json
 
+      # -------------------------------------------
       # Step 8: Validate Configuration File
+      # -------------------------------------------
       - name: ✅ Validate JSON File
         run: |
           echo "Configuration JSON:"
           cat configuration.json
 
+      # -------------------------------------------
       # Step 9: Upload Artifact
+      # -------------------------------------------
       - name: 📤 Upload Configuration as Artifact
         uses: actions/upload-artifact@v3
         with:
           name: configuration
           path: configuration.json
 
+      # -------------------------------------------
       # Step 10: Log Determined Environment
+      # -------------------------------------------
       - name: 📝 Log Environment
         run: echo "The determined environment is ${{ steps.determine-config.outputs.environment }}"
