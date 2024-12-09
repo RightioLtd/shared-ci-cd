@@ -59,14 +59,14 @@ jobs:
 
           # Serialize secrets into JSON, excluding those starting with SSH_
           # Filter secrets based on allowPrefix
-          if [ -z "$ALLOW_PREFIX" ]; then
+                    if [ -z "$ALLOW_PREFIX" ]; then
             secrets_json="{}"
           else
             secrets_json=$(jq --arg prefix "$ALLOW_PREFIX" '
               to_entries | map(select(.key | startswith($prefix))) | from_entries
-            ' <<< "${{ toJson(secrets) }}")
+            ' <<< '${{ toJson(secrets) }}')
           fi
-
+          
           # If production, remove all variables and secrets containing the word DEV (case-insensitive)
           if [ "$app_environment" == "production" ]; then
             vars_json=$(jq 'with_entries(select(.key | test("DEV"; "i") | not))' <<< "$vars_json")
