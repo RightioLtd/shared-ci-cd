@@ -75,13 +75,12 @@ jobs:
           echo "environment=$app_environment" >> $GITHUB_OUTPUT
 
       # -------------------------------------------
-      # Step 3: Filter Variables and Secrets
+      # Step 3: Extract Variables and Secrets (Prefix Filtering Only)
       # -------------------------------------------
-      - name: 🔧 Filter Variables and Secrets
-        id: filter-vars
+      - name: 🔧 Extract Vars and Secrets
+        id: extract-vars-secrets
         shell: bash
         env:
-          APP_ENVIRONMENT: ${{ env.APP_ENVIRONMENT }}
           ALLOW_PREFIX: ${{ env.ALLOW_PREFIX }}
         run: |
           set -euo pipefail
@@ -98,30 +97,15 @@ jobs:
               <<< '${{ toJson(secrets) }}')
           fi
 
-          # Environment-based filtering of keys
-          # Remove DEV-related keys for production, and PROD-related keys for non-production
-          if [ "$APP_ENVIRONMENT" = "production" ]; then
-            vars_json=$(jq 'with_entries(select(.key | test("DEV"; "i") | not))' <<< "$vars_json")
-            secrets_json=$(jq 'with_entries(select(.key | test("DEV"; "i") | not))' <<< "$secrets_json")
-          else
-            vars_json=$(jq 'with_entries(select(.key | test("PROD"; "i") | not))' <<< "$vars_json")
-            secrets_json=$(jq 'with_entries(select(.key | test("PROD"; "i") | not))' <<< "$secrets_json")
-          fi
-
-          # Normalize keys: remove _DEV_ or _PROD_
-          vars_json=$(jq 'to_entries | map(.key |= sub("_(DEV|PROD)_"; "_"; "i")) | from_entries' <<< "$vars_json")
-          secrets_json=$(jq 'to_entries | map(.key |= sub("_(DEV|PROD)_"; "_"; "i")) | from_entries' <<< "$secrets_json")
-
-          # Write filtered JSON to environment
-          # Use jq -c to ensure single-line output suitable for GITHUB_ENV
+          # Store unfiltered results (no env filtering yet) as compact JSON for next steps
           vars_json_compact=$(echo "$vars_json" | jq -c .)
           secrets_json_compact=$(echo "$secrets_json" | jq -c .)
 
-          echo "VARS_JSON=$vars_json_compact" >> $GITHUB_ENV
-          echo "SECRETS_JSON=$secrets_json_compact" >> $GITHUB_ENV
+          echo "UNFILTERED_VARS_JSON=$vars_json_compact" >> $GITHUB_ENV
+          echo "UNFILTERED_SECRETS_JSON=$secrets_json_compact" >> $GITHUB_ENV
 
       # -------------------------------------------
-      # Step 4: Optionally Map Secrets to AppSettings Format
+      # Step 4: Optionally Map Secrets to AppSettings Format Before Filtering
       # -------------------------------------------
       - name: 🔧 Map Secrets to AppSettings Format (Optional)
         if: ${{ env.MAP_TO_APPSETTINGS_SECRETS != '' }}
@@ -129,18 +113,16 @@ jobs:
         shell: bash
         env:
           MAP_TO_APPSETTINGS_SECRETS: ${{ env.MAP_TO_APPSETTINGS_SECRETS }}
-          SECRETS_JSON: ${{ env.SECRETS_JSON }}
+          UNFILTERED_SECRETS_JSON: ${{ env.UNFILTERED_SECRETS_JSON }}
         run: |
           set -euo pipefail
 
-          # Split the comma-separated list of prefixes
           prefixes=$(echo "$MAP_TO_APPSETTINGS_SECRETS" | tr ',' ' ')
-
-          transformed="$SECRETS_JSON"
+          transformed="$UNFILTERED_SECRETS_JSON"
 
           # For each prefix, rename keys starting with that prefix to APPSETTINGS__<rest_of_key>
           for prefix in $prefixes; do
-            transformed=$(jq --arg prefix "$prefix" '
+            transformed=$(echo "$transformed" | jq --arg prefix "$prefix" '
               to_entries
               | map(
                   if .key | startswith($prefix) then
@@ -150,15 +132,50 @@ jobs:
                   end
                 )
               | from_entries
-            ' <<< "$transformed")
+            ')
           done
 
-          # Convert to single-line before writing to GITHUB_ENV
           transformed_compact=$(echo "$transformed" | jq -c .)
-          echo "SECRETS_JSON=$transformed_compact" >> $GITHUB_ENV
+          echo "UNFILTERED_SECRETS_JSON=$transformed_compact" >> $GITHUB_ENV
 
       # -------------------------------------------
-      # Step 5: Create configuration.json Artifact
+      # Step 5: Apply Environment-Based Filtering and Normalization
+      # -------------------------------------------
+      - name: 🔧 Apply Environment-Based Filtering
+        id: environment-filtering
+        shell: bash
+        env:
+          APP_ENVIRONMENT: ${{ env.APP_ENVIRONMENT }}
+          UNFILTERED_VARS_JSON: ${{ env.UNFILTERED_VARS_JSON }}
+          UNFILTERED_SECRETS_JSON: ${{ env.UNFILTERED_SECRETS_JSON }}
+        run: |
+          set -euo pipefail
+
+          vars_json="$UNFILTERED_VARS_JSON"
+          secrets_json="$UNFILTERED_SECRETS_JSON"
+
+          # Environment-based filtering of keys
+          if [ "$APP_ENVIRONMENT" = "production" ]; then
+            vars_json=$(echo "$vars_json" | jq 'with_entries(select(.key | test("DEV"; "i") | not))')
+            secrets_json=$(echo "$secrets_json" | jq 'with_entries(select(.key | test("DEV"; "i") | not))')
+          else
+            vars_json=$(echo "$vars_json" | jq 'with_entries(select(.key | test("PROD"; "i") | not))')
+            secrets_json=$(echo "$secrets_json" | jq 'with_entries(select(.key | test("PROD"; "i") | not))')
+          fi
+
+          # Normalize keys: remove _DEV_ or _PROD_
+          vars_json=$(echo "$vars_json" | jq 'to_entries | map(.key |= sub("_(DEV|PROD)_"; "_"; "i")) | from_entries')
+          secrets_json=$(echo "$secrets_json" | jq 'to_entries | map(.key |= sub("_(DEV|PROD)_"; "_"; "i")) | from_entries')
+
+          # Convert to single-line before writing to GITHUB_ENV
+          vars_json_compact=$(echo "$vars_json" | jq -c .)
+          secrets_json_compact=$(echo "$secrets_json" | jq -c .)
+
+          echo "VARS_JSON=$vars_json_compact" >> $GITHUB_ENV
+          echo "SECRETS_JSON=$secrets_json_compact" >> $GITHUB_ENV
+
+      # -------------------------------------------
+      # Step 6: Create configuration.json Artifact
       # -------------------------------------------
       - name: 📝 Create configuration.json
         id: create-config-file
@@ -191,7 +208,7 @@ jobs:
             }' > configuration.json
 
       # -------------------------------------------
-      # Step 6: Validate Configuration File
+      # Step 7: Validate Configuration File
       # -------------------------------------------
       - name: ✅ Validate JSON File
         run: |
@@ -199,7 +216,7 @@ jobs:
           cat configuration.json
 
       # -------------------------------------------
-      # Step 7: Upload Artifact
+      # Step 8: Upload Artifact
       # -------------------------------------------
       - name: 📤 Upload Configuration as Artifact
         uses: actions/upload-artifact@v3
@@ -208,7 +225,7 @@ jobs:
           path: configuration.json
 
       # -------------------------------------------
-      # Step 8: Log Determined Environment
+      # Step 9: Log Determined Environment
       # -------------------------------------------
       - name: 📝 Log Environment
         run: echo "The determined environment is ${{ steps.determine-config.outputs.environment }}"
