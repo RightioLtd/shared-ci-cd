@@ -79,10 +79,13 @@ jobs:
           echo "RAW_VARS_JSON=$(echo "$vars_json" | jq -c .)" >> $GITHUB_ENV
           echo "RAW_SECRETS_JSON=$(echo "$secrets_json" | jq -c .)" >> $GITHUB_ENV
 
-      # Step 4: Map Secrets to AppSettings First
-      # Mapping is done on the raw, unfiltered secrets so we don't lose them.
+      # -------------------------------------------
+      # Step 4: Optionally Map Secrets to AppSettings Format
+      # and remove any secrets starting with SSH_
+      # -------------------------------------------
       - name: 🔧 Map Secrets to AppSettings Format (Optional)
         if: ${{ env.MAP_TO_APPSETTINGS_SECRETS != '' }}
+        id: map-to-appsettings
         shell: bash
         env:
           MAP_TO_APPSETTINGS_SECRETS: ${{ env.MAP_TO_APPSETTINGS_SECRETS }}
@@ -92,6 +95,7 @@ jobs:
           prefixes=$(echo "$MAP_TO_APPSETTINGS_SECRETS" | tr ',' ' ')
           transformed="$RAW_SECRETS_JSON"
 
+          # Rename keys starting with given prefixes to APPSETTINGS__ format
           for prefix in $prefixes; do
             transformed=$(echo "$transformed" | jq --arg prefix "$prefix" '
               to_entries
@@ -106,7 +110,30 @@ jobs:
             ')
           done
 
-          echo "MAPPED_SECRETS_JSON=$(echo "$transformed" | jq -c .)" >> $GITHUB_ENV
+          # Remove any secrets starting with SSH_
+          transformed=$(echo "$transformed" | jq '
+            to_entries
+            | map(select(.key | startswith("SSH_") | not))
+            | from_entries
+          ')
+
+          transformed_compact=$(echo "$transformed" | jq -c .)
+          echo "MAPPED_SECRETS_JSON=$transformed_compact" >> $GITHUB_ENV
+
+      # If no mapping provided, just pass through RAW_SECRETS_JSON but still remove SSH_ secrets
+      - name: 🔧 Use Raw Secrets if No Mapping Provided & Remove SSH_ Keys
+        if: ${{ env.MAP_TO_APPSETTINGS_SECRETS == '' }}
+        run: |
+          set -euo pipefail
+          # Remove any secrets starting with SSH_ even if no mapping is done
+          cleaned=$(echo "${RAW_SECRETS_JSON}" | jq '
+            to_entries
+            | map(select(.key | startswith("SSH_") | not))
+            | from_entries
+          ')
+          cleaned_compact=$(echo "$cleaned" | jq -c .)
+          echo "MAPPED_SECRETS_JSON=$cleaned_compact" >> $GITHUB_ENV
+
 
       - name: 🔧 Use Raw Secrets if No Mapping Provided
         if: ${{ env.MAP_TO_APPSETTINGS_SECRETS == '' }}
