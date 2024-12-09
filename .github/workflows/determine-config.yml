@@ -13,7 +13,7 @@ on:
 jobs:
   set-config:
     runs-on: ubuntu-latest
-    environment: ${{ inputs.branch }} # Dynamically set the environment based on the branch
+    environment: ${{ (inputs.branch == 'main' || inputs.branch == 'master') && 'production' || (inputs.branch == 'development') && 'development' || (inputs.branch == 'training' && 'training') || 'development' }}
 
     steps:
       - name: 🔧 Determine Environment and Set Variables
@@ -23,9 +23,9 @@ jobs:
         shell: bash
         run: |
           # Determine environment based on branch
-          branch="${{ inputs.branch }}"
+          branch="${{ env.ENVIRONMENT }}"
           case "$branch" in
-            production)
+            main|master)
               configuration="Release"
               build_flag="prod"
               app_domain="${{ vars.DOMAIN }}.co.uk"
@@ -65,14 +65,14 @@ jobs:
               to_entries | map(select(.key | startswith($prefix))) | from_entries
             ' <<< '${{ toJson(secrets) }}')
           fi
-
+          
           # Create the final JSON configuration dynamically
           jq -n \
-            --arg configuration "$configuration" \
-            --arg build_flag "$build_flag" \
-            --arg app_domain "$app_domain" \
-            --arg app_environment "$app_environment" \
-            --argjson static_variables "$vars_json" \
+          --arg configuration "$configuration" \
+          --arg build_flag "$build_flag" \
+          --arg app_domain "$app_domain" \
+          --arg app_environment "$app_environment" \
+          --argjson static_variables "$vars_json" \
             --argjson static_secrets "$secrets_json" \
             '{
               configuration: $configuration,
@@ -81,7 +81,10 @@ jobs:
               app_environment: $app_environment,
               static_variables: $static_variables,
               static_secrets: $static_secrets
-            }' > configuration.json
+              }' > configuration.json
+              
+          echo "app_environment=$app_environment" >> $GITHUB_ENV
+          echo "::set-output name=environment::$app_environment"
 
       - name: Validate JSON File
         run: |
@@ -93,3 +96,6 @@ jobs:
         with:
           name: configuration
           path: configuration.json
+
+      - name: 📝 Log Environment
+        run: echo "The determined environment is ${{ steps.set-env.outputs.environment }}"
