@@ -6,6 +6,9 @@ on:
       branch:
         required: true
         type: string
+      allowPrefix:
+        required: false
+        type: string
 
 jobs:
   set-config:
@@ -15,6 +18,8 @@ jobs:
     steps:
       - name: 🔧 Determine Environment and Set Variables
         id: set-env
+        env:
+          ALLOW_PREFIX: ${{ inputs.allowPrefix }}
         shell: bash
         run: |
           # Determine environment based on branch
@@ -50,8 +55,16 @@ jobs:
           echo "Creating artifact configuration.json"
           # Serialize vars and secrets into JSON strings provided by GitHub Actions
           vars_json='${{ toJson(vars) }}'
+
           # Serialize secrets into JSON, excluding those starting with SSH_
-          secrets_json=$(jq 'to_entries | map(select(.key | startswith("SSH_") | not)) | from_entries' <<< '${{ toJson(secrets) }}')
+          # Filter secrets based on allowPrefix
+          if [ -z "$ALLOW_PREFIX" ]; then
+            secrets_json="{}"
+          else
+            secrets_json=$(jq --arg prefix "$ALLOW_PREFIX" '
+              to_entries | map(select(.key | startswith($prefix))) | from_entries
+            ' <<< '${{ toJson(secrets) }}')
+          fi
 
           # Create the final JSON configuration dynamically
           jq -n \
