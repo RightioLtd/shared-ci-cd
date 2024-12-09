@@ -50,7 +50,8 @@ jobs:
           echo "Creating artifact configuration.json"
           # Serialize vars and secrets into JSON strings provided by GitHub Actions
           vars_json='${{ toJson(vars) }}'
-          secrets_json='${{ toJson(secrets) }}'
+          # Serialize secrets into JSON, excluding those starting with SSH_
+          secrets_json=$(jq 'to_entries | map(select(.key | startswith("SSH_") | not)) | from_entries' <<< '${{ toJson(secrets) }}')
 
           # Create the final JSON configuration dynamically
           jq -n \
