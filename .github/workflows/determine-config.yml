@@ -111,7 +111,7 @@ jobs:
                 to_entries
                 | map(
                     if .key | startswith($prefix) then
-                      .key = ("APPSETTINGS__" + (.key | sub("^" + $prefix; "")))
+                      .key = "APPSETTINGS__" + .key
                     else
                       .
                     end
