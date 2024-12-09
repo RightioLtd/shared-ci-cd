@@ -65,6 +65,19 @@ jobs:
               to_entries | map(select(.key | startswith($prefix))) | from_entries
             ' <<< '${{ toJson(secrets) }}')
           fi
+
+          # If production, remove all variables and secrets containing word DEV case-insensitive
+          if [ "$app_environment" == "production" ]; then
+            vars_json=$(jq 'with_entries(select(.key | test("DEV"; "i") | not))' <<< "$vars_json")
+            secrets_json=$(jq 'with_entries(select(.key | test("DEV"; "i") | not))' <<< "$secrets_json")
+          else
+            vars_json=$(jq 'with_entries(select(.key | test("PROD"; "i") | not))' <<< "$vars_json")
+            secrets_json=$(jq 'with_entries(select(.key | test("PROD"; "i") | not))' <<< "$secrets_json")
+          fi
+
+          # Remaining vars and secrets remove _DEV_ and _PROD_ from the key
+          vars_json=$(jq 'to_entries | map(.key |= sub("_(DEV|PROD)_"; "_"; "i")) | from_entries' <<< "$vars_json")
+          secrets_json=$(jq 'to_entries | map(.key |= sub("_(DEV|PROD)_"; "_"; "i")) | from_entries' <<< "$secrets_json"
           
           # Create the final JSON configuration dynamically
           jq -n \
