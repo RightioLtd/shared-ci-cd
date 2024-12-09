@@ -75,37 +75,26 @@ jobs:
           echo "environment=$app_environment" >> $GITHUB_OUTPUT
 
       # -------------------------------------------
-      # Step 3: Extract Variables and Secrets (Prefix Filtering Only)
+      # Step 3: Extract All Vars and Secrets (No Filtering Yet)
       # -------------------------------------------
       - name: 🔧 Extract Vars and Secrets
         id: extract-vars-secrets
         shell: bash
-        env:
-          ALLOW_PREFIX: ${{ env.ALLOW_PREFIX }}
         run: |
           set -euo pipefail
 
-          # Convert vars to JSON
           vars_json='${{ toJson(vars) }}'
+          secrets_json='${{ toJson(secrets) }}'
 
-          # Handle secrets based on the allowed prefix
-          if [ -z "${ALLOW_PREFIX:-}" ]; then
-            secrets_json="{}"
-          else
-            secrets_json=$(jq --arg prefix "$ALLOW_PREFIX" \
-              'to_entries | map(select(.key | startswith($prefix))) | from_entries' \
-              <<< '${{ toJson(secrets) }}')
-          fi
-
-          # Store unfiltered results (no env filtering yet) as compact JSON for next steps
+          # Store unfiltered results as compact JSON for next steps
           vars_json_compact=$(echo "$vars_json" | jq -c .)
           secrets_json_compact=$(echo "$secrets_json" | jq -c .)
 
-          echo "UNFILTERED_VARS_JSON=$vars_json_compact" >> $GITHUB_ENV
-          echo "UNFILTERED_SECRETS_JSON=$secrets_json_compact" >> $GITHUB_ENV
+          echo "RAW_VARS_JSON=$vars_json_compact" >> $GITHUB_ENV
+          echo "RAW_SECRETS_JSON=$secrets_json_compact" >> $GITHUB_ENV
 
       # -------------------------------------------
-      # Step 4: Optionally Map Secrets to AppSettings Format Before Filtering
+      # Step 4: Optionally Map Secrets to AppSettings Format
       # -------------------------------------------
       - name: 🔧 Map Secrets to AppSettings Format (Optional)
         if: ${{ env.MAP_TO_APPSETTINGS_SECRETS != '' }}
@@ -113,14 +102,14 @@ jobs:
         shell: bash
         env:
           MAP_TO_APPSETTINGS_SECRETS: ${{ env.MAP_TO_APPSETTINGS_SECRETS }}
-          UNFILTERED_SECRETS_JSON: ${{ env.UNFILTERED_SECRETS_JSON }}
+          RAW_SECRETS_JSON: ${{ env.RAW_SECRETS_JSON }}
         run: |
           set -euo pipefail
 
           prefixes=$(echo "$MAP_TO_APPSETTINGS_SECRETS" | tr ',' ' ')
-          transformed="$UNFILTERED_SECRETS_JSON"
+          transformed="$RAW_SECRETS_JSON"
 
-          # For each prefix, rename keys starting with that prefix to APPSETTINGS__<rest_of_key>
+          # Rename keys starting with given prefixes to APPSETTINGS__ format
           for prefix in $prefixes; do
             transformed=$(echo "$transformed" | jq --arg prefix "$prefix" '
               to_entries
@@ -136,23 +125,29 @@ jobs:
           done
 
           transformed_compact=$(echo "$transformed" | jq -c .)
-          echo "UNFILTERED_SECRETS_JSON=$transformed_compact" >> $GITHUB_ENV
+          echo "MAPPED_SECRETS_JSON=$transformed_compact" >> $GITHUB_ENV
+
+      # If no mapping provided, just pass through RAW_SECRETS_JSON
+      - name: 🔧 Ensure Secrets JSON is Set if not Mapped
+        if: ${{ env.MAP_TO_APPSETTINGS_SECRETS == '' }}
+        run: |
+          echo "MAPPED_SECRETS_JSON=${{ env.RAW_SECRETS_JSON }}" >> $GITHUB_ENV
 
       # -------------------------------------------
-      # Step 5: Apply Environment-Based Filtering and Normalization
+      # Step 5: Apply Environment-Based Filtering
       # -------------------------------------------
       - name: 🔧 Apply Environment-Based Filtering
         id: environment-filtering
         shell: bash
         env:
           APP_ENVIRONMENT: ${{ env.APP_ENVIRONMENT }}
-          UNFILTERED_VARS_JSON: ${{ env.UNFILTERED_VARS_JSON }}
-          UNFILTERED_SECRETS_JSON: ${{ env.UNFILTERED_SECRETS_JSON }}
+          RAW_VARS_JSON: ${{ env.RAW_VARS_JSON }}
+          MAPPED_SECRETS_JSON: ${{ env.MAPPED_SECRETS_JSON }}
         run: |
           set -euo pipefail
 
-          vars_json="$UNFILTERED_VARS_JSON"
-          secrets_json="$UNFILTERED_SECRETS_JSON"
+          vars_json="$RAW_VARS_JSON"
+          secrets_json="$MAPPED_SECRETS_JSON"
 
           # Environment-based filtering of keys
           if [ "$APP_ENVIRONMENT" = "production" ]; then
@@ -167,15 +162,43 @@ jobs:
           vars_json=$(echo "$vars_json" | jq 'to_entries | map(.key |= sub("_(DEV|PROD)_"; "_"; "i")) | from_entries')
           secrets_json=$(echo "$secrets_json" | jq 'to_entries | map(.key |= sub("_(DEV|PROD)_"; "_"; "i")) | from_entries')
 
-          # Convert to single-line before writing to GITHUB_ENV
-          vars_json_compact=$(echo "$vars_json" | jq -c .)
-          secrets_json_compact=$(echo "$secrets_json" | jq -c .)
-
-          echo "VARS_JSON=$vars_json_compact" >> $GITHUB_ENV
-          echo "SECRETS_JSON=$secrets_json_compact" >> $GITHUB_ENV
+          echo "ENV_FILTERED_VARS_JSON=$(echo "$vars_json" | jq -c .)" >> $GITHUB_ENV
+          echo "ENV_FILTERED_SECRETS_JSON=$(echo "$secrets_json" | jq -c .)" >> $GITHUB_ENV
 
       # -------------------------------------------
-      # Step 6: Create configuration.json Artifact
+      # Step 6: Apply Prefix Filtering After Everything Else
+      # -------------------------------------------
+      - name: 🔧 Apply Prefix Filtering
+        if: ${{ env.ALLOW_PREFIX != '' }}
+        id: prefix-filtering
+        shell: bash
+        env:
+          ALLOW_PREFIX: ${{ env.ALLOW_PREFIX }}
+          ENV_FILTERED_VARS_JSON: ${{ env.ENV_FILTERED_VARS_JSON }}
+          ENV_FILTERED_SECRETS_JSON: ${{ env.ENV_FILTERED_SECRETS_JSON }}
+        run: |
+          set -euo pipefail
+
+          vars_json="$ENV_FILTERED_VARS_JSON"
+          secrets_json="$ENV_FILTERED_SECRETS_JSON"
+
+          # Now filter by prefix (if needed)
+          secrets_json=$(echo "$secrets_json" | jq --arg prefix "$ALLOW_PREFIX" '
+            to_entries | map(select(.key | startswith($prefix))) | from_entries
+          ')
+
+          echo "VARS_JSON=$(echo "$vars_json" | jq -c .)" >> $GITHUB_ENV
+          echo "SECRETS_JSON=$(echo "$secrets_json" | jq -c .)" >> $GITHUB_ENV
+
+      # If no prefix filtering is specified, just pass through
+      - name: 🔧 No Prefix Filtering Needed
+        if: ${{ env.ALLOW_PREFIX == '' }}
+        run: |
+          echo "VARS_JSON=${{ env.ENV_FILTERED_VARS_JSON }}" >> $GITHUB_ENV
+          echo "SECRETS_JSON=${{ env.ENV_FILTERED_SECRETS_JSON }}" >> $GITHUB_ENV
+
+      # -------------------------------------------
+      # Step 7: Create configuration.json Artifact
       # -------------------------------------------
       - name: 📝 Create configuration.json
         id: create-config-file
@@ -208,7 +231,7 @@ jobs:
             }' > configuration.json
 
       # -------------------------------------------
-      # Step 7: Validate Configuration File
+      # Step 8: Validate Configuration File
       # -------------------------------------------
       - name: ✅ Validate JSON File
         run: |
@@ -216,7 +239,7 @@ jobs:
           cat configuration.json
 
       # -------------------------------------------
-      # Step 8: Upload Artifact
+      # Step 9: Upload Artifact
       # -------------------------------------------
       - name: 📤 Upload Configuration as Artifact
         uses: actions/upload-artifact@v3
@@ -225,7 +248,7 @@ jobs:
           path: configuration.json
 
       # -------------------------------------------
-      # Step 9: Log Determined Environment
+      # Step 10: Log Determined Environment
       # -------------------------------------------
       - name: 📝 Log Environment
         run: echo "The determined environment is ${{ steps.determine-config.outputs.environment }}"
