@@ -53,6 +53,7 @@ jobs:
 
           # Create artifact JSON
           echo "Creating artifact configuration.json"
+
           # Serialize vars and secrets into JSON strings provided by GitHub Actions
           vars_json='${{ toJson(vars) }}'
 
@@ -63,29 +64,30 @@ jobs:
           else
             secrets_json=$(jq --arg prefix "$ALLOW_PREFIX" '
               to_entries | map(select(.key | startswith($prefix))) | from_entries
-            ' <<< '${{ toJson(secrets) }}')
+            ' <<< "${{ toJson(secrets) }}")
           fi
 
-          # If production, remove all variables and secrets containing word DEV case-insensitive
+          # If production, remove all variables and secrets containing the word DEV (case-insensitive)
           if [ "$app_environment" == "production" ]; then
             vars_json=$(jq 'with_entries(select(.key | test("DEV"; "i") | not))' <<< "$vars_json")
             secrets_json=$(jq 'with_entries(select(.key | test("DEV"; "i") | not))' <<< "$secrets_json")
           else
+            # For non-production, remove all variables and secrets containing the word PROD (case-insensitive)
             vars_json=$(jq 'with_entries(select(.key | test("PROD"; "i") | not))' <<< "$vars_json")
             secrets_json=$(jq 'with_entries(select(.key | test("PROD"; "i") | not))' <<< "$secrets_json")
           fi
 
-          # Remaining vars and secrets remove _DEV_ and _PROD_ from the key
+          # Modify keys to remove _DEV_ and _PROD_ from the key
           vars_json=$(jq 'to_entries | map(.key |= sub("_(DEV|PROD)_"; "_"; "i")) | from_entries' <<< "$vars_json")
-          secrets_json=$(jq 'to_entries | map(.key |= sub("_(DEV|PROD)_"; "_"; "i")) | from_entries' <<< "$secrets_json"
-          
+          secrets_json=$(jq 'to_entries | map(.key |= sub("_(DEV|PROD)_"; "_"; "i")) | from_entries' <<< "$secrets_json")
+
           # Create the final JSON configuration dynamically
           jq -n \
-          --arg configuration "$configuration" \
-          --arg build_flag "$build_flag" \
-          --arg app_domain "$app_domain" \
-          --arg app_environment "$app_environment" \
-          --argjson static_variables "$vars_json" \
+            --arg configuration "$configuration" \
+            --arg build_flag "$build_flag" \
+            --arg app_domain "$app_domain" \
+            --arg app_environment "$app_environment" \
+            --argjson static_variables "$vars_json" \
             --argjson static_secrets "$secrets_json" \
             '{
               configuration: $configuration,
@@ -94,10 +96,14 @@ jobs:
               app_environment: $app_environment,
               static_variables: $static_variables,
               static_secrets: $static_secrets
-              }' > configuration.json
-              
+            }' > configuration.json
+
+          echo "Configuration file created: configuration.json"
+
+          # Set environment variables for GitHub Actions
           echo "app_environment=$app_environment" >> $GITHUB_ENV
           echo "::set-output name=environment::$app_environment"
+
 
       - name: Validate JSON File
         run: |
