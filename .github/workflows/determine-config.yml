@@ -9,6 +9,9 @@ on:
       allowSecretsPrefix:
         required: false
         type: string
+      mapToAppSettingsSecrets:
+        required: false
+        type: string
 
 jobs:
   set-config:
@@ -16,52 +19,77 @@ jobs:
     environment: ${{ (inputs.branch == 'main' || inputs.branch == 'master') && 'production' || (inputs.branch == 'development') && 'development' || (inputs.branch == 'training' && 'training') || 'development' }}
 
     steps:
-      - name: 🔧 Determine Environment and Set Variables
-        id: set-env
-        env:
-          ALLOW_PREFIX: ${{ inputs.allowPrefix }}
+      # -------------------------------------------
+      # Step 1: Prepare Environment Variables
+      # -------------------------------------------
+      - name: 🔧 Prepare Environment Variables
+        id: prepare-vars
+        run: |
+          echo "ALLOW_PREFIX=${{ inputs.allowSecretsPrefix }}" >> $GITHUB_ENV
+          echo "SELECTED_BRANCH=${{ inputs.branch }}" >> $GITHUB_ENV
+          echo "MAPT_TO_APPSETTINGS_SECRETS=${{ inputs.mapToAppSettingsSecrets }}" >> $GITHUB_ENV
+
+      # -------------------------------------------
+      # Step 2: Determine Configuration Settings
+      # -------------------------------------------
+      - name: 🔧 Determine Configuration Settings
+        id: determine-config
         shell: bash
+        env:
+          SELECTED_BRANCH: ${{ env.SELECTED_BRANCH }}
+          DOMAIN: ${{ vars.DOMAIN }}
         run: |
           set -euo pipefail
 
-          # Determine environment based on branch
-          branch="${{ env.ENVIRONMENT }}"
-
+          branch="$SELECTED_BRANCH"
           configuration="Debug"
           build_flag="dev"
-          app_domain="${{ vars.DOMAIN }}-dev.co.uk"
+          app_domain="${DOMAIN}-dev.co.uk"
           app_environment="development"
 
           case "$branch" in
             main|master)
               configuration="Release"
               build_flag="prod"
-              app_domain="${{ vars.DOMAIN }}.co.uk"
+              app_domain="${DOMAIN}.co.uk"
               app_environment="production"
               ;;
             development)
-              configuration="Debug"
-              build_flag="dev"
-              app_domain="${{ vars.DOMAIN }}-dev.co.uk"
-              app_environment="development"
+              # Defaults already set
               ;;
             training)
               configuration="Debug"
               build_flag="train"
-              app_domain="${{ vars.DOMAIN }}-train.co.uk"
+              app_domain="${DOMAIN}-train.co.uk"
               app_environment="training"
               ;;
             *)
-              # Default is already set above for unmatched cases
+              # Defaults remain as initially set
               ;;
           esac
 
-          echo "Creating artifact configuration.json"
+          echo "CONFIGURATION=$configuration" >> $GITHUB_ENV
+          echo "BUILD_FLAG=$build_flag" >> $GITHUB_ENV
+          echo "APP_DOMAIN=$app_domain" >> $GITHUB_ENV
+          echo "APP_ENVIRONMENT=$app_environment" >> $GITHUB_ENV
+          echo "environment=$app_environment" >> $GITHUB_OUTPUT
 
-          # Serialize vars and secrets into JSON strings provided by GitHub Actions
+      # -------------------------------------------
+      # Step 3: Filter Variables and Secrets
+      # -------------------------------------------
+      - name: 🔧 Filter Variables and Secrets
+        id: filter-vars
+        shell: bash
+        env:
+          APP_ENVIRONMENT: ${{ env.APP_ENVIRONMENT }}
+          ALLOW_PREFIX: ${{ env.ALLOW_PREFIX }}
+        run: |
+          set -euo pipefail
+
+          # Convert vars to JSON
           vars_json='${{ toJson(vars) }}'
 
-          # Handle secrets based on ALLOW_PREFIX, filtering appropriately
+          # Handle secrets based on the allowed prefix
           if [ -z "${ALLOW_PREFIX:-}" ]; then
             secrets_json="{}"
           else
@@ -70,13 +98,12 @@ jobs:
               <<< '${{ toJson(secrets) }}')
           fi
 
-          # Filter out DEV/PROD keys depending on environment
-          if [ "$app_environment" = "production" ]; then
-            # Remove keys containing 'DEV'
+          # Environment-based filtering of keys
+          # Remove DEV-related keys for production, and PROD-related keys for non-production
+          if [ "$APP_ENVIRONMENT" = "production" ]; then
             vars_json=$(jq 'with_entries(select(.key | test("DEV"; "i") | not))' <<< "$vars_json")
             secrets_json=$(jq 'with_entries(select(.key | test("DEV"; "i") | not))' <<< "$secrets_json")
           else
-            # Non-production: remove keys containing 'PROD'
             vars_json=$(jq 'with_entries(select(.key | test("PROD"; "i") | not))' <<< "$vars_json")
             secrets_json=$(jq 'with_entries(select(.key | test("PROD"; "i") | not))' <<< "$secrets_json")
           fi
@@ -85,14 +112,69 @@ jobs:
           vars_json=$(jq 'to_entries | map(.key |= sub("_(DEV|PROD)_"; "_"; "i")) | from_entries' <<< "$vars_json")
           secrets_json=$(jq 'to_entries | map(.key |= sub("_(DEV|PROD)_"; "_"; "i")) | from_entries' <<< "$secrets_json")
 
-          # Create the final JSON configuration file
+          # Write filtered JSON to environment
+          echo "VARS_JSON=$vars_json" >> $GITHUB_ENV
+          echo "SECRETS_JSON=$secrets_json" >> $GITHUB_ENV
+
+      # -------------------------------------------
+      # Step 4: Optionally Map Secrets to AppSettings Format
+      # -------------------------------------------
+      - name: 🔧 Map Secrets to AppSettings Format (Optional)
+        if: ${{ env.MAPT_TO_APPSETTINGS_SECRETS != '' }}
+        id: map-to-appsettings
+        shell: bash
+        env:
+          MAPT_TO_APPSETTINGS_SECRETS: ${{ env.MAPT_TO_APPSETTINGS_SECRETS }}
+          SECRETS_JSON: ${{ env.SECRETS_JSON }}
+        run: |
+          set -euo pipefail
+
+          # Split the comma-separated list of prefixes
+          prefixes=$(echo "$MAPT_TO_APPSETTINGS_SECRETS" | tr ',' ' ')
+
+          transformed="$SECRETS_JSON"
+
+          # For each prefix, rename keys starting with that prefix to APPSETTINGS__<rest_of_key>
+          for prefix in $prefixes; do
+            transformed=$(jq --arg prefix "$prefix" '
+              to_entries
+              | map(
+                  if .key | startswith($prefix) then
+                    .key = ("APPSETTINGS__" + (.key | sub("^" + $prefix; "")))
+                  else
+                    .
+                  end
+                )
+              | from_entries
+            ' <<< "$transformed")
+          done
+
+          echo "SECRETS_JSON=$transformed" >> $GITHUB_ENV
+
+      # -------------------------------------------
+      # Step 5: Create configuration.json Artifact
+      # -------------------------------------------
+      - name: 📝 Create configuration.json
+        id: create-config-file
+        shell: bash
+        env:
+          CONFIGURATION: ${{ env.CONFIGURATION }}
+          BUILD_FLAG: ${{ env.BUILD_FLAG }}
+          APP_DOMAIN: ${{ env.APP_DOMAIN }}
+          APP_ENVIRONMENT: ${{ env.APP_ENVIRONMENT }}
+          VARS_JSON: ${{ env.VARS_JSON }}
+          SECRETS_JSON: ${{ env.SECRETS_JSON }}
+        run: |
+          set -euo pipefail
+          echo "Creating artifact configuration.json"
+
           jq -n \
-            --arg configuration "$configuration" \
-            --arg build_flag "$build_flag" \
-            --arg app_domain "$app_domain" \
-            --arg app_environment "$app_environment" \
-            --argjson static_variables "$vars_json" \
-            --argjson static_secrets "$secrets_json" \
+            --arg configuration "$CONFIGURATION" \
+            --arg build_flag "$BUILD_FLAG" \
+            --arg app_domain "$APP_DOMAIN" \
+            --arg app_environment "$APP_ENVIRONMENT" \
+            --argjson static_variables "$VARS_JSON" \
+            --argjson static_secrets "$SECRETS_JSON" \
             '{
               configuration: $configuration,
               build_flag: $build_flag,
@@ -102,24 +184,25 @@ jobs:
               static_secrets: $static_secrets
             }' > configuration.json
 
-          echo "Configuration file created: configuration.json"
-
-          # Set environment variables for GitHub Actions
-          echo "app_environment=$app_environment" >> "$GITHUB_ENV"
-
-          # Use GITHUB_OUTPUT instead of ::set-output (deprecated)
-          echo "environment=$app_environment" >> "$GITHUB_OUTPUT"
-
-      - name: Validate JSON File
+      # -------------------------------------------
+      # Step 6: Validate Configuration File
+      # -------------------------------------------
+      - name: ✅ Validate JSON File
         run: |
           echo "Configuration JSON:"
           cat configuration.json
 
+      # -------------------------------------------
+      # Step 7: Upload Artifact
+      # -------------------------------------------
       - name: 📤 Upload Configuration as Artifact
         uses: actions/upload-artifact@v3
         with:
           name: configuration
           path: configuration.json
 
+      # -------------------------------------------
+      # Step 8: Log Determined Environment
+      # -------------------------------------------
       - name: 📝 Log Environment
-        run: echo "The determined environment is ${{ steps.set-env.outputs.environment }}"
+        run: echo "The determined environment is ${{ steps.determine-config.outputs.environment }}"
