@@ -6,7 +6,7 @@ on:
       branch:
         required: true
         type: string
-      allowPrefix:
+      allowSecretsPrefix:
         required: false
         type: string
 
