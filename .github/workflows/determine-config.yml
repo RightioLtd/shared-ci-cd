@@ -53,11 +53,13 @@ jobs:
           DOMAIN: ${{ vars.DOMAIN }}
         run: |
           set -euo pipefail
+
           branch="$SELECTED_BRANCH"
           configuration="Debug"
           build_flag="dev"
           app_domain="${DOMAIN}-dev.co.uk"
           app_environment="development"
+
           case "$branch" in
             main|master)
               configuration="Release"
@@ -65,7 +67,9 @@ jobs:
               app_domain="${DOMAIN}.co.uk"
               app_environment="production"
               ;;
-            development) # Use defaults ;;
+            development)
+              # Use defaults
+              ;;
             training)
               configuration="Debug"
               build_flag="train"
