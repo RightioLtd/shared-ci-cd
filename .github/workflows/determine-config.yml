@@ -308,6 +308,7 @@ jobs:
           VARS_JSON: ${{ env.VARS_JSON }}
           SECRETS_JSON: ${{ env.SECRETS_JSON }}
           CUSTOM_SECRETS_JSON: ${{ env.CUSTOM_SECRETS_JSON }}
+          CUSTOM_VARS_JSON: ${{ env.CUSTOM_VARS_JSON }}
         run: |
           set -euo pipefail
           echo "Creating artifact configuration.json"
