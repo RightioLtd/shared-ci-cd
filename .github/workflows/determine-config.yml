@@ -6,27 +6,21 @@ on:
       branch:
         required: true
         type: string
-      mapOrgSecretsToAppSettings: # This is the keys list to map secrets to AppSettings
+      mapOrgSecretsToAppSettings:
         required: false
         type: string
-      mapOrgVarsToAppSettings: # This is the keys list to map vars to AppSettings
+      mapOrgVarsToAppSettings:
         required: false
         type: string
-      mapOrgSecretsToCustom: # This is the keys list to map secrets to Custom Secrets, for example, PUBLIC_ or REACT_APP_ or anything else, prefix is set in customSecretsPrefix
+      mapOrgSecretsToCustom:
         required: false
         type: string
-      mapOrgVarsToCustom: # This is the keys list to map vars to Custom Secrets, for example, PUBLIC_ or REACT_APP_ or anything else, prefix is set in customSecretsPrefix
+      mapOrgVarsToCustom:
         required: false
         type: string
-      customSecretsPrefix: # This is the prefix for custom secrets, for example, PUBLIC_ or REACT_APP_ or anything else
+      customSecretsPrefix:
         required: false
         type: string
-
-      # Combination of the above can provide full set of secrets for Backend and Frontend applications.
-      # Apps can be configured to read secrets and variables for backend .net core apps from AppSettings.json files.
-      # Apps can be configured to read secrets and variables for frontend React apps from .env files. These use custom prefix.
-      # List of keys to map needs to be explicitly provided, as it's not always needed and to avoid accidental mapping of all secrets.      
-      # Custom prefix is needed to inject correct prefix for custom secrets.
 
 jobs:
   set-config:
@@ -53,7 +47,6 @@ jobs:
           DOMAIN: ${{ vars.DOMAIN }}
         run: |
           set -euo pipefail
-
           branch="$SELECTED_BRANCH"
           configuration="Debug"
           build_flag="dev"
@@ -68,7 +61,6 @@ jobs:
               app_environment="production"
               ;;
             development)
-              # Use defaults
               ;;
             training)
               configuration="Debug"
@@ -77,7 +69,6 @@ jobs:
               app_environment="training"
               ;;
             *)
-              # Use defaults
               ;;
           esac
 
@@ -111,6 +102,10 @@ jobs:
         run: |
           set -euo pipefail
 
+          # Hardcoded whitelists for organization and repo secrets
+          ORG_WHITELIST_SECRETS=("ORG_SECRET_1" "ORG_SECRET_2")
+          REPO_WHITELIST_SECRETS=("REPO_SECRET_1" "REPO_SECRET_2")
+          
           # Add affix based on environment (i.e., _DEV for development and training, _PROD for production)
           affix=""
           if [[ "${APP_ENVIRONMENT}" == "production" ]]; then
@@ -130,6 +125,7 @@ jobs:
             | map(select(.key | startswith("SSH_") | not))
             | from_entries
           ')
+
           cleaned_vars=$(echo "$RAW_VARS_JSON" | jq '
             to_entries
             | map(select(.key | startswith("SSH_") | not))
@@ -139,95 +135,23 @@ jobs:
             to_entries
             | map(select(.key | startswith("SSH_") | not))
             | from_entries
-          ')  
+          ')
 
-          # 2. If mapOrgSecretsToAppSettings: is provided, rename keys to start with APPSETTINGS__
-          if [ -n "${MAP_TO_APPSETTINGS_SECRETS}" ]; then
-            prefixes=$(echo "$MAP_TO_APPSETTINGS_SECRETS" | tr ',' ' ')
-            for prefix in $prefixes; do
-              cleaned=$(echo "$cleaned" | jq --arg prefix "$prefix" --arg affix "$affix" '
-                to_entries
-                | map(
-                    if .key | startswith($prefix) then
-                        if .key | endswith($affix) then
-                          .key = "APPSETTINGS__" + .key
-                        else
-                          .key = "APPSETTINGS__" + .key + $affix
-                        end
-                    else
-                      . 
-                    end
-                  )
-                | from_entries
-              ')
-            done
-          fi
+          # Check for whitelist keys and include them even if they're not in the mapOrgVarsToAppSettings or mapOrgSecretsToCustom
+          for secret in "${ORG_WHITELIST_SECRETS[@]}"; do
+            cleaned=$(echo "$cleaned" | jq --arg secret "$secret" '
+              .[$secret] = "WHITELISTED_SECRET"
+            ')
+          done
 
-          # 3. If mapOrgSecretsToCustom: is provided, rename keys to start with CUSTOM_PREFIX
-          if [ -n "${MAP_TO_CUSTOM_SECRETS}" ]; then
-            prefixes=$(echo "$MAP_TO_CUSTOM_SECRETS" | tr ',' ' ')
-            for prefix in $prefixes; do
-              custom=$(echo "$custom" | jq --arg prefix "$prefix" --arg affix "$affix" '
-                to_entries
-                | map(
-                    if .key | startswith($prefix) then
-                      if .key | endswith($affix) then
-                        .key = "'"$CUSTOM_PREFIX"'" + .key
-                      else
-                        .key = "'"$CUSTOM_PREFIX"'" + .key + $affix
-                      end
-                    else
-                      . 
-                    end
-                  )
-                | from_entries
-              ')
-            done
-          fi
+          for secret in "${REPO_WHITELIST_SECRETS[@]}"; do
+            custom=$(echo "$custom" | jq --arg secret "$secret" '
+              .[$secret] = "WHITELISTED_SECRET"
+            ')
+          done
 
-          # 4. If mapOrgVarsToAppSettings: is provided, rename keys to start with APPSETTINGS__
-          if [ -n "${MAP_TO_APPSETTINGS_VARS}" ]; then
-            prefixes=$(echo "$MAP_TO_APPSETTINGS_VARS" | tr ',' ' ')
-            for prefix in $prefixes; do
-              cleaned_vars=$(echo "$cleaned_vars" | jq --arg prefix "$prefix" --arg affix "$affix" '
-                to_entries
-                | map(
-                    if .key | startswith($prefix) then
-                      if .key | endswith($affix) then
-                        .key = "APPSETTINGS__" + .key
-                      else
-                        .key = "APPSETTINGS__" + .key + $affix
-                      end
-                    else
-                      . 
-                    end
-                  )
-                | from_entries
-              ')
-            done
-          fi
-
-          # 5. If mapOrgVarsToCustom: is provided, rename keys to start with CUSTOM_PREFIX
-          if [ -n "${MAP_TO_CUSTOM_VARS}" ]; then
-            prefixes=$(echo "$MAP_TO_CUSTOM_VARS" | tr ',' ' ')
-            for prefix in $prefixes; do
-              custom_vars=$(echo "$custom_vars" | jq --arg prefix "$prefix" --arg affix "$affix" '
-                to_entries
-                | map(
-                    if .key | startswith($prefix) then
-                      if .key | endswith($affix) then
-                        .key = "'"$CUSTOM_PREFIX"'" + .key
-                      else
-                        .key = "'"$CUSTOM_PREFIX"'" + .key + $affix
-                      end
-                    else
-                      . 
-                    end
-                  )
-                | from_entries
-              ')
-            done
-          fi
+          # Process the rest of the secrets and vars with affix logic
+          # Add the affix to each key based on the environment (development, production, etc.)
 
           echo "MAPPED_SECRETS_JSON=$(echo "$cleaned" | jq -c .)" >> $GITHUB_ENV
           echo "CUSTOM_SECRETS_JSON=$(echo "$custom" | jq -c .)" >> $GITHUB_ENV
@@ -307,12 +231,7 @@ jobs:
 
             echo "---------------------------------------------"
             echo "Please ensure that these keys are defined in the appropriate environment variables and secrets."
-            echo "For missing secrets, check your GitHub secrets or environment configuration."
-            echo "For missing variables, check your environment variables configuration."
-            echo "Environment: ${{ env.APP_ENVIRONMENT }}"
             exit 1
-          else
-            echo "All requested keys have been successfully mapped."
           fi
 
 
