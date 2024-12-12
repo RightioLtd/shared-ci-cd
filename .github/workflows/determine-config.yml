@@ -240,29 +240,45 @@ jobs:
           # Flatten all expected keys
           all_requested_keys=("${APPSETTINGS_SECRETS[@]}" "${APPSETTINGS_VARS[@]}" "${CUSTOM_SECRETS[@]}" "${CUSTOM_VARS[@]}")
 
+          # Set affix based on environment (i.e., _DEV for development and training, _PROD for production)
+          affix=""
+          if [[ "${APP_ENVIRONMENT}" == "production" ]]; then
+            affix="_PROD"
+          elif [[ "${APP_ENVIRONMENT}" == "development" || "${APP_ENVIRONMENT}" == "training" ]]; then
+            affix="_DEV"
+          fi
+
           # Check if each requested key exists in MAPPED_SECRETS_JSON and MAPPED_VARS_JSON
           missing_keys=()
 
           # Check in MAPPED_SECRETS_JSON
           for key in "${all_requested_keys[@]}"; do
-            if ! echo "$MAPPED_SECRETS_JSON" | jq -e "has(\"$key\")" > /dev/null; then
-              missing_keys+=("Secret: $key")
+            if ! echo "$MAPPED_SECRETS_JSON" | jq -e "has(\"$key$affix\")" > /dev/null; then
+              missing_keys+=("Secret: $key$affix")
             fi
           done
 
           # Check in MAPPED_VARS_JSON
           for key in "${all_requested_keys[@]}"; do
-            if ! echo "$MAPPED_VARS_JSON" | jq -e "has(\"$key\")" > /dev/null; then
-              missing_keys+=("Var: $key")
+            if ! echo "$MAPPED_VARS_JSON" | jq -e "has(\"$key$affix\")" > /dev/null; then
+              missing_keys+=("Var: $key$affix")
             fi
           done
 
-          # If there are missing keys, output them and fail the job
+          # If there are missing keys, output them in a structured way
           if [ ${#missing_keys[@]} -gt 0 ]; then
             echo "ERROR: The following requested keys were not found in the mapped secrets/vars:"
+            echo "---------------------------------------------"
+            echo "The following keys are missing from the mapped secrets or variables (with affix):"
+            
+            # Display each missing key with its context and affix
             for missing_key in "${missing_keys[@]}"; do
-              echo "$missing_key"
+              echo "- ${missing_key}"
             done
+
+            echo "---------------------------------------------"
+            echo "Please ensure that these keys are defined in the appropriate environment variables and secrets."
+            echo "Environment: ${{ env.APP_ENVIRONMENT }}"
             exit 1
           else
             echo "All requested keys have been successfully mapped."
