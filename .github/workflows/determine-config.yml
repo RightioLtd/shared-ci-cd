@@ -32,7 +32,7 @@ jobs:
       - name: 🔧 Prepare Environment Variables
         run: |
           echo "SELECTED_BRANCH=${{ inputs.branch }}" >> $GITHUB_ENV
-          echo "MAP_TO_APPSETTINGS_SECRETS=${{ inputs.mapOrgSecretsToAppSettings }},APPSETTINGS__DATABASE__DATABASEPASSWORD,APPSETTINGS__DATABASE__DATABASEUSER" >> $GITHUB_ENV
+          echo "MAP_TO_APPSETTINGS_SECRETS=${{ inputs.mapOrgSecretsToAppSettings }},DATABASE__DATABASEPASSWORD,DATABASE__DATABASEUSER" >> $GITHUB_ENV
           echo "MAP_TO_CUSTOM_SECRETS=${{ inputs.mapOrgSecretsToCustom }}" >> $GITHUB_ENV
           echo "MAP_TO_APPSETTINGS_VARS=${{ inputs.mapOrgVarsToAppSettings }},DATABASE__DATABASE_SERVER" >> $GITHUB_ENV
           echo "MAP_TO_CUSTOM_VARS=${{ inputs.mapOrgVarsToCustom }}" >> $GITHUB_ENV
@@ -119,6 +119,10 @@ jobs:
           # Remove Affixes from keys
           RAW_VARS_JSON=$(echo "$RAW_VARS_JSON" | jq 'to_entries | map(.key |= (sub("_DEV$"; "") | sub("_PROD$"; ""))) | from_entries')
           RAW_SECRETS_JSON=$(echo "$RAW_SECRETS_JSON" | jq 'to_entries | map(.key |= (sub("_DEV$"; "") | sub("_PROD$"; ""))) | from_entries')
+
+          # Remove Prefixes from keys
+          RAW_VARS_JSON=$(echo "$RAW_VARS_JSON" | jq 'to_entries | map(.key |= (sub("^APPSETTINGS__"; "") | sub("^CUSTOM_PREFIX"; ""))) | from_entries')
+          RAW_SECRETS_JSON=$(echo "$RAW_SECRETS_JSON" | jq 'to_entries | map(.key |= (sub("^APPSETTINGS__"; "") | sub("^CUSTOM_PREFIX"; ""))) | from_entries')
 
           # Print Vars and Secrets JSON
           echo "RAW_VARS_JSON=$RAW_VARS_JSON"
