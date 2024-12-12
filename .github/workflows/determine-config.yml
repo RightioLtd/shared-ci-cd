@@ -47,7 +47,7 @@ jobs:
           DOMAIN: ${{ vars.DOMAIN }}
         run: |
           set -euo pipefail
-          
+
           branch="$SELECTED_BRANCH"
           configuration="Debug"
           build_flag="dev"
@@ -88,7 +88,7 @@ jobs:
         shell: bash
         run: |
           set -euo pipefail
-          
+
           vars_json='${{ toJson(vars) }}'
           secrets_json='${{ toJson(secrets) }}'
           echo "RAW_VARS_JSON=$(echo "$vars_json" | jq -c .)" >> $GITHUB_ENV
@@ -153,7 +153,7 @@ jobs:
             | from_entries
           ')
 
-          
+
 
           if [[ -n "$MAP_TO_APPSETTINGS_SECRETS" ]]; then
           for prefix in $(echo "$MAP_TO_APPSETTINGS_SECRETS" | tr ',' ' '); do
@@ -318,7 +318,6 @@ jobs:
           echo "CUSTOM_VARS_JSON=$(echo "$MAPPED_VARS_JSON" | jq -c .)" >> $GITHUB_ENV
           echo "CUSTOM_SECRETS_JSON=$(echo "$MAPPED_SECRETS_JSON" | jq -c .)" >> $GITHUB_ENV
 
-
       # Step 6: Merge Vars and Secrets into Single Objects and Replace __ with _ in Custom Vars/Secrets Only
       - name: 🔧 Merge Vars and Secrets and Replace __ with _ in Custom Vars/Secrets Only
         id: merge-vars-secrets
@@ -388,10 +387,8 @@ jobs:
               configuration: $configuration,
               build_flag: $build_flag,
               app_domain: $app_domain,
-              app_environment: $app_environment,
-              $variables,
-              $secrets
-            }' > configuration.json
+              app_environment: $app_environment
+            } + $variables + $secrets' > configuration.json
 
       # -------------------------------------------
       # Step 8: Validate Configuration File
