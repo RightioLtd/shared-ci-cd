@@ -235,8 +235,8 @@ jobs:
         run: |
           set -euo pipefail
 
-          # Convert inputs to arrays
-          IFS=',' read -ra APPSETTINGS_SECRETS <<< "$MAP_TO_APPSETTINGS_SECRETS"
+          # Convert inputs to arrays, add prefix to each key, and flatten all requested keys (secrets and vars)
+          IFS=',' read -ra APPSETTINGS_SECRETS <<< "$MAP_TO_APPSETTINGS_SECRETS" # Convert to array
           IFS=',' read -ra APPSETTINGS_VARS <<< "$MAP_TO_APPSETTINGS_VARS"
           IFS=',' read -ra CUSTOM_SECRETS <<< "$MAP_TO_CUSTOM_SECRETS"
           IFS=',' read -ra CUSTOM_VARS <<< "$MAP_TO_CUSTOM_VARS"
@@ -246,11 +246,26 @@ jobs:
 
           # Set affix based on environment (i.e., _DEV for development and training, _PROD for production)
           affix=""
-          if [[ "${APP_ENVIRONMENT}" == "production" ]]; then
-            affix="_PROD"
-          elif [[ "${APP_ENVIRONMENT}" == "development" || "${APP_ENVIRONMENT}" == "training" ]]; then
-            affix="_DEV"
+          # if [[ "${APP_ENVIRONMENT}" == "production" ]]; then
+          #   affix="_PROD"
+          # elif [[ "${APP_ENVIRONMENT}" == "development" || "${APP_ENVIRONMENT}" == "training" ]]; then
+          #   affix="_DEV"
+          # fi
+
+          # Set prefix based on map type (i.e., APPSETTINGS__ for appsettings, CUSTOM_PREFIX for custom)
+          prefix=""
+          if [[ "${MAP_TO_APPSETTINGS_SECRETS}" || "${MAP_TO_APPSETTINGS_VARS}" ]]; then
+            prefix="APPSETTINGS__"
+            # Map to with prefix
+            APPSETTINGS_SECRETS=("${APPSETTINGS_SECRETS[@]/#/APPSETTINGS__}")
+            APPSETTINGS_VARS=("${APPSETTINGS_VARS[@]/#/APPSETTINGS__}")
+          elif [[ "${MAP_TO_CUSTOM_SECRETS}" || "${MAP_TO_CUSTOM_VARS}" ]]; then
+            prefix="${CUSTOM_PREFIX}"
+            # Map to with prefix
+            CUSTOM_SECRETS=("${CUSTOM_SECRETS[@]/#/$CUSTOM_PREFIX}")
+            CUSTOM_VARS=("${CUSTOM_VARS[@]/#/$CUSTOM_PREFIX}")
           fi
+
 
           # Initialize arrays to track missing keys
           missing_secrets=()
