@@ -85,6 +85,17 @@ jobs:
           set -euo pipefail
           vars_json='${{ toJson(vars) }}'
           secrets_json='${{ toJson(secrets) }}'
+          # Filter out secrets and vars that end with _DEV if we are in a production environment, else opposite
+          if [[ "${APP_ENVIRONMENT}" == "production" ]]; then
+            vars_json=$(echo "$vars_json" | jq 'to_entries | map(select(.key | endswith("_DEV") | not)) | from_entries')
+            secrets_json=$(echo "$secrets_json" | jq 'to_entries | map(select(.key | endswith("_DEV") | not)) | from_entries')
+          elif [[ "${APP_ENVIRONMENT}" == "development" || "${APP_ENVIRONMENT}" == "training" ]]; then
+            vars_json=$(echo "$vars_json" | jq 'to_entries | map(select(.key | endswith("_PROD") | not)) | from_entries')
+            secrets_json=$(echo "$secrets_json" | jq 'to_entries | map(select(.key | endswith("_PROD") | not)) | from_entries')
+          fi
+          # Remove Affixes from the keys if they exist
+          vars_json=$(echo "$vars_json" | jq 'to_entries | map(.key |= sub("_DEV$"; "") | sub("_PROD$"; "") | from_entries')
+          secrets_json=$(echo "$secrets_json" | jq 'to_entries | map(.key |= sub("_DEV$"; "") | sub("_PROD$"; "") | from_entries')
           echo "RAW_VARS_JSON=$(echo "$vars_json" | jq -c .)" >> $GITHUB_ENV
           echo "RAW_SECRETS_JSON=$(echo "$secrets_json" | jq -c .)" >> $GITHUB_ENV
 
