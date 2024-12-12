@@ -313,6 +313,11 @@ jobs:
             exit 1
           fi
 
+          echo "VARS_JSON=$(echo "$MAPPED_VARS_JSON" | jq -c .)" >> $GITHUB_ENV
+          echo "SECRETS_JSON=$(echo "$MAPPED_SECRETS_JSON" | jq -c .)" >> $GITHUB_ENV
+          echo "CUSTOM_VARS_JSON=$(echo "$MAPPED_VARS_JSON" | jq -c .)" >> $GITHUB_ENV
+          echo "CUSTOM_SECRETS_JSON=$(echo "$MAPPED_SECRETS_JSON" | jq -c .)" >> $GITHUB_ENV
+
 
       # Step 6: Merge Vars and Secrets into Single Objects and Replace __ with _ in Custom Vars/Secrets Only
       - name: 🔧 Merge Vars and Secrets and Replace __ with _ in Custom Vars/Secrets Only
