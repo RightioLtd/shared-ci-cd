@@ -212,9 +212,7 @@ jobs:
           echo "MAPPED_VARS_JSON=$(echo "$cleaned_vars" | jq -c .)" >> $GITHUB_ENV
           echo "CUSTOM_VARS_JSON=$(echo "$custom_vars" | jq -c .)" >> $GITHUB_ENV
 
-      # -------------------------------------------
       # Step 5: Merge Vars and Secrets into Single Objects and Replace __ with _ in Custom Vars/Secrets Only
-      # -------------------------------------------
       - name: 🔧 Merge Vars and Secrets and Replace __ with _ in Custom Vars/Secrets Only
         id: merge-vars-secrets
         shell: bash
@@ -225,6 +223,18 @@ jobs:
           CUSTOM_VARS_JSON: ${{ env.CUSTOM_VARS_JSON }}
         run: |
           set -euo pipefail
+
+          # Validate that SECRETS_JSON and VARS_JSON are valid JSON before using them
+          if [[ -z "$VARS_JSON" || "$(echo "$VARS_JSON" | jq type)" != '"object"' ]]; then
+            echo "VARS_JSON is either empty or not valid JSON. Exiting..."
+            exit 1
+          fi
+
+          if [[ -z "$SECRETS_JSON" || "$(echo "$SECRETS_JSON" | jq type)" != '"object"' ]]; then
+            echo "SECRETS_JSON is either empty or not valid JSON. Exiting..."
+            exit 1
+          fi
+
           # Merge VARS_JSON with CUSTOM_VARS_JSON into a single vars object
           merged_vars=$(echo "{}" | jq --argjson vars "$VARS_JSON" --argjson custom_vars "$CUSTOM_VARS_JSON" '
             .vars = $vars + $custom_vars
@@ -242,6 +252,7 @@ jobs:
           # Store the merged results
           echo "MERGED_VARS_JSON=$(echo "$merged_vars" | jq -c .)" >> $GITHUB_ENV
           echo "MERGED_SECRETS_JSON=$(echo "$merged_secrets" | jq -c .)" >> $GITHUB_ENV
+
 
       # -------------------------------------------
       # Step 6: Create configuration.json with merged Vars and Secrets
