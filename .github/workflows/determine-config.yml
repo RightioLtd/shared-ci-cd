@@ -6,15 +6,27 @@ on:
       branch:
         required: true
         type: string
-      mapOrgSecretsToAppSettings:
+      mapOrgSecretsToAppSettings: # This is the keys list to map secrets to AppSettings
         required: false
         type: string
-      mapOrgSecretsToCustom:
+      mapOrgVarsToAppSettings: # This is the keys list to map vars to AppSettings
         required: false
         type: string
-      customSecretsPrefix:
+      mapOrgSecretsToCustom: # This is the keys list to map secrets to Custom Secrets, for example, PUBLIC_ or REACT_APP_ or anything else, prefix is set in customSecretsPrefix
         required: false
         type: string
+      mapOrgVarsToCustom: # This is the keys list to map vars to Custom Secrets, for example, PUBLIC_ or REACT_APP_ or anything else, prefix is set in customSecretsPrefix
+        required: false
+        type: string
+      customSecretsPrefix: # This is the prefix for custom secrets, for example, PUBLIC_ or REACT_APP_ or anything else
+        required: false
+        type: string
+
+      # Combination of the above can provide full set of secrets for Backend and Frontend applications.
+      # Apps can be configured to read secrets and variables for backend .net core apps from AppSettings.json files.
+      # Apps can be configured to read secrets and variables for frontend React apps from .env files. These use custom prefix.
+      # List of keys to map needs to be explicitly provided, as it's not always needed and to avoid accidental mapping of all secrets.      
+      # Custom prefix is needed to inject correct prefix for custom secrets.
 
 jobs:
   set-config:
@@ -30,6 +42,8 @@ jobs:
           echo "SELECTED_BRANCH=${{ inputs.branch }}" >> $GITHUB_ENV
           echo "MAP_TO_APPSETTINGS_SECRETS=${{ inputs.mapOrgSecretsToAppSettings }}" >> $GITHUB_ENV
           echo "MAP_TO_CUSTOM_SECRETS=${{ inputs.mapOrgSecretsToCustom }}" >> $GITHUB_ENV
+          echo "MAP_TO_APPSETTINGS_VARS=${{ inputs.mapOrgVarsToAppSettings }}" >> $GITHUB_ENV
+          echo "MAP_TO_CUSTOM_VARS=${{ inputs.mapOrgVarsToCustom }}" >> $GITHUB_ENV
           echo "CUSTOM_PREFIX=${{ inputs.customSecretsPrefix }}" >> $GITHUB_ENV
 
       # -------------------------------------------
@@ -96,8 +110,11 @@ jobs:
         shell: bash
         env:
           RAW_SECRETS_JSON: ${{ env.RAW_SECRETS_JSON }}
+          RAW_VARS_JSON: ${{ env.RAW_VARS_JSON }}
           MAP_TO_APPSETTINGS_SECRETS: ${{ env.MAP_TO_APPSETTINGS_SECRETS }}
           MAP_TO_CUSTOM_SECRETS: ${{ env.MAP_TO_CUSTOM_SECRETS }}
+          MAP_TO_APPSETTINGS_VARS: ${{ env.MAP_TO_APPSETTINGS_VARS }}
+          MAP_TO_CUSTOM_VARS: ${{ env.MAP_TO_CUSTOM_VARS }}
           CUSTOM_PREFIX: ${{ env.CUSTOM_PREFIX }}
         run: |
           set -euo pipefail
@@ -111,7 +128,18 @@ jobs:
           custom=$(echo "$RAW_SECRETS_JSON" | jq '
             to_entries
             | map(select(.key | startswith("SSH_") | not))
-            | from_entries  
+            | from_entries
+          ')
+          cleaned_vars=$(echo "$RAW_VARS_JSON" | jq '
+            to_entries
+            | map(select(.key | startswith("SSH_") | not))
+            | from_entries
+          ')
+          custom_vars=$(echo "$RAW_VARS_JSON" | jq '
+            to_entries
+            | map(select(.key | startswith("SSH_") | not))
+            | from_entries
+          ')  
 
           # 2. If mapOrgSecretsToAppSettings: is provided, rename keys to start with APPSETTINGS__
           if [ -n "${MAP_TO_APPSETTINGS_SECRETS}" ]; then
@@ -149,8 +177,46 @@ jobs:
             done
           fi
 
+          # 4. If mapOrgVarsToAppSettings: is provided, rename keys to start with APPSETTINGS__
+          if [ -n "${MAP_TO_APPSETTINGS_VARS}" ]; then
+            prefixes=$(echo "$MAP_TO_APPSETTINGS_VARS" | tr ',' ' ')
+            for prefix in $prefixes; do
+              cleaned_vars=$(echo "$cleaned_vars" | jq --arg prefix "$prefix" '
+                to_entries
+                | map(
+                    if .key | startswith($prefix) then
+                      .key = "APPSETTINGS__" + .key
+                    else
+                      .
+                    end
+                  )
+                | from_entries
+              ')
+            done
+          fi
+
+          # 5. If mapOrgVarsToCustom: is provided, rename keys to start with CUSTOM_PREFIX
+          if [ -n "${MAP_TO_CUSTOM_VARS}" ]; then
+            prefixes=$(echo "$MAP_TO_CUSTOM_VARS" | tr ',' ' ')
+            for prefix in $prefixes; do
+              custom_vars=$(echo "$custom_vars" | jq --arg prefix "$prefix" '
+                to_entries
+                | map(
+                    if .key | startswith($prefix) then
+                      .key = "'"$CUSTOM_PREFIX"'" + .key
+                    else
+                      .
+                    end
+                  )
+                | from_entries
+              ')
+            done
+          fi
+
           echo "MAPPED_SECRETS_JSON=$(echo "$cleaned" | jq -c .)" >> $GITHUB_ENV
           echo "CUSTOM_SECRETS_JSON=$(echo "$custom" | jq -c .)" >> $GITHUB_ENV
+          echo "MAPPED_VARS_JSON=$(echo "$cleaned_vars" | jq -c .)" >> $GITHUB_ENV
+          echo "CUSTOM_VARS_JSON=$(echo "$custom_vars" | jq -c .)" >> $GITHUB_ENV
 
       # -------------------------------------------
       # Step 5: Environment-Based Filtering
@@ -159,37 +225,43 @@ jobs:
         shell: bash
         env:
           APP_ENVIRONMENT: ${{ env.APP_ENVIRONMENT }}
-          RAW_VARS_JSON: ${{ env.RAW_VARS_JSON }}
           MAPPED_SECRETS_JSON: ${{ env.MAPPED_SECRETS_JSON }}
           CUSTOM_SECRETS_JSON: ${{ env.CUSTOM_SECRETS_JSON }}
+          MAPPED_VARS_JSON: ${{ env.MAPPED_VARS_JSON }}
+          CUSTOM_VARS_JSON: ${{ env.CUSTOM_VARS_JSON }}
         run: |
           set -euo pipefail
       
           # Re-parse the JSON to ensure we have proper JSON objects
-          vars_json=$(echo "$RAW_VARS_JSON" | jq -c .)
+          vars_json=$(echo "$MAPPED_VARS_JSON" | jq -c .)
           secrets_json=$(echo "$MAPPED_SECRETS_JSON" | jq -c .)
           secrets_json_custom=$(echo "$CUSTOM_SECRETS_JSON" | jq -c .)
+          vars_json_custom=$(echo "$CUSTOM_VARS_JSON" | jq -c .)
       
           if [ "$APP_ENVIRONMENT" = "production" ]; then
             # Always remove DEV keys, no exception
             vars_json=$(echo "$vars_json" | jq 'to_entries | map(select(.key | test("DEV"; "i") | not)) | from_entries')
             secrets_json=$(echo "$secrets_json" | jq 'to_entries | map(select(.key | test("DEV"; "i") | not)) | from_entries')
             secrets_json_custom=$(echo "$secrets_json_custom" | jq 'to_entries | map(select(.key | test("DEV"; "i") | not)) | from_entries')
+            vars_json_custom=$(echo "$vars_json_custom" | jq 'to_entries | map(select(.key | test("DEV"; "i") | not)) | from_entries')
           else
             # Always remove PROD keys, no exception
             vars_json=$(echo "$vars_json" | jq 'to_entries | map(select(.key | test("PROD"; "i") | not)) | from_entries')
             secrets_json=$(echo "$secrets_json" | jq 'to_entries | map(select(.key | test("PROD"; "i") | not)) | from_entries')
             secrets_json_custom=$(echo "$secrets_json_custom" | jq 'to_entries | map(select(.key | test("PROD"; "i") | not)) | from_entries')
+            vars_json_custom=$(echo "$vars_json_custom" | jq 'to_entries | map(select(.key | test("PROD"; "i") | not)) | from_entries')
           fi
       
           # Normalize keys: remove _DEV_ or _PROD_
           vars_json=$(echo "$vars_json" | jq 'to_entries | map(.key |= sub("_(DEV|PROD)"; ""; "i")) | from_entries')
           secrets_json=$(echo "$secrets_json" | jq 'to_entries | map(.key |= sub("_(DEV|PROD)"; ""; "i")) | from_entries')
           secrets_json_custom=$(echo "$secrets_json_custom" | jq 'to_entries | map(.key |= sub("_(DEV|PROD)"; ""; "i")) | from_entries')
+          vars_json_custom=$(echo "$vars_json_custom" | jq 'to_entries | map(.key |= sub("_(DEV|PROD)"; ""; "i")) | from_entries')
       
           echo "ENV_FILTERED_VARS_JSON=$(echo "$vars_json" | jq -c .)" >> $GITHUB_ENV
           echo "ENV_FILTERED_SECRETS_JSON=$(echo "$secrets_json" | jq -c .)" >> $GITHUB_ENV
           echo "CUSTOM_FILTERED_SECRETS_JSON=$(echo "$secrets_json_custom" | jq -c .)" >> $GITHUB_ENV
+          echo "CUSTOM_FILTERED_VARS_JSON=$(echo "$vars_json_custom" | jq -c .)" >> $GITHUB_ENV
       
 
       # -------------------------------------------
@@ -220,6 +292,7 @@ jobs:
           echo "VARS_JSON=${{ env.ENV_FILTERED_VARS_JSON }}" >> $GITHUB_ENV
           echo "SECRETS_JSON=${{ env.ENV_FILTERED_SECRETS_JSON }}" >> $GITHUB_ENV
           echo "CUSTOM_SECRETS_JSON=${{ env.CUSTOM_FILTERED_SECRETS_JSON }}" >> $GITHUB_ENV
+          echo "CUSTOM_VARS_JSON=${{ env.CUSTOM_FILTERED_VARS_JSON }}" >> $GITHUB_ENV
 
       # -------------------------------------------
       # Step 7: Create configuration.json
@@ -247,6 +320,7 @@ jobs:
             --argjson static_variables "$VARS_JSON" \
             --argjson static_secrets "$SECRETS_JSON" \
             --argjson custom_secrets "$CUSTOM_SECRETS_JSON" \
+            --argjson custom_vars "$CUSTOM_VARS_JSON" \
             '{
               configuration: $configuration,
               build_flag: $build_flag,
