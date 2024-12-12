@@ -237,8 +237,9 @@ jobs:
           IFS=',' read -ra CUSTOM_SECRETS <<< "$MAP_TO_CUSTOM_SECRETS"
           IFS=',' read -ra CUSTOM_VARS <<< "$MAP_TO_CUSTOM_VARS"
 
-          # Flatten all expected keys
-          all_requested_keys=("${APPSETTINGS_SECRETS[@]}" "${APPSETTINGS_VARS[@]}" "${CUSTOM_SECRETS[@]}" "${CUSTOM_VARS[@]}")
+          # Flatten all requested keys
+          appsettings_secrets=("${APPSETTINGS_SECRETS[@]}" "${CUSTOM_SECRETS[@]}")
+          appsettings_vars=("${APPSETTINGS_VARS[@]}" "${CUSTOM_VARS[@]}")
 
           # Set affix based on environment (i.e., _DEV for development and training, _PROD for production)
           affix=""
@@ -248,39 +249,30 @@ jobs:
             affix="_DEV"
           fi
 
-          # Check if each requested key exists in MAPPED_SECRETS_JSON and MAPPED_VARS_JSON
-          missing_keys=()
+          # Initialize arrays to track missing keys
+          missing_secrets=()
+          missing_vars=()
 
-          # Check in MAPPED_SECRETS_JSON
-          for key in "${all_requested_keys[@]}"; do
-            if ! echo "$MAPPED_SECRETS_JSON" | jq -e "has(\"$key$affix\")" > /dev/null; then
-              missing_keys+=("Secret: $key$affix")
+          # Check for missing secrets in MAPPED_SECRETS_JSON
+          for secret in "${appsettings_secrets[@]}"; do
+            if ! echo "$MAPPED_SECRETS_JSON" | jq -e "has(\"$secret$affix\")" > /dev/null; then
+              missing_secrets+=("Secret: $secret$affix")
             fi
           done
 
-          # Check in MAPPED_VARS_JSON
-          for key in "${all_requested_keys[@]}"; do
-            if ! echo "$MAPPED_VARS_JSON" | jq -e "has(\"$key$affix\")" > /dev/null; then
-              missing_keys+=("Var: $key$affix")
+          # Check for missing vars in MAPPED_VARS_JSON
+          for var in "${appsettings_vars[@]}"; do
+            if ! echo "$MAPPED_VARS_JSON" | jq -e "has(\"$var$affix\")" > /dev/null; then
+              missing_vars+=("Var: $var$affix")
             fi
           done
 
           # If there are missing keys, output them in a structured way
-          if [ ${#missing_keys[@]} -gt 0 ]; then
+          if [ ${#missing_secrets[@]} -gt 0 ] || [ ${#missing_vars[@]} -gt 0 ]; then
             echo "ERROR: The following requested keys were not found in the mapped secrets/vars:"
             echo "---------------------------------------------"
             
-            # Separate Secrets and Vars
-            missing_secrets=()
-            missing_vars=()
-            for missing_key in "${missing_keys[@]}"; do
-              if [[ "$missing_key" == Secret* ]]; then
-                missing_secrets+=("$missing_key")
-              else
-                missing_vars+=("$missing_key")
-              fi
-            done
-
+            # Display missing secrets with affix
             if [ ${#missing_secrets[@]} -gt 0 ]; then
               echo "Missing Secrets (with affix):"
               for secret in "${missing_secrets[@]}"; do
@@ -288,6 +280,7 @@ jobs:
               done
             fi
 
+            # Display missing vars with affix
             if [ ${#missing_vars[@]} -gt 0 ]; then
               echo "Missing Vars (with affix):"
               for var in "${missing_vars[@]}"; do
@@ -304,6 +297,7 @@ jobs:
           else
             echo "All requested keys have been successfully mapped."
           fi
+
 
 
 
