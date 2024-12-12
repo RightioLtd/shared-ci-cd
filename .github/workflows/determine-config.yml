@@ -12,13 +12,13 @@ on:
       mapOrgVarsToAppSettings: # This is the keys list to map vars to AppSettings
         required: false
         type: string
-      mapOrgSecretsToCustom: # This is the keys list to map secrets to Custom Secrets, for example, PUBLIC_ or REACT_APP_ or anything else, prefix is set in customSecretsPrefix
+      mapOrgSecretsToCustom: # This is the keys list to map secrets to Custom Secrets, for example, PUBLIC_ or REACT_APP_ or anything else, prefix is set in customPrefix
         required: false
         type: string
-      mapOrgVarsToCustom: # This is the keys list to map vars to Custom Secrets, for example, PUBLIC_ or REACT_APP_ or anything else, prefix is set in customSecretsPrefix
+      mapOrgVarsToCustom: # This is the keys list to map vars to Custom Secrets, for example, PUBLIC_ or REACT_APP_ or anything else, prefix is set in customPrefix
         required: false
         type: string
-      customSecretsPrefix: # This is the prefix for custom secrets, for example, PUBLIC_ or REACT_APP_ or anything else
+      customPrefix: # This is the prefix for custom secrets, for example, PUBLIC_ or REACT_APP_ or anything else
         required: false
         type: string
 
@@ -44,7 +44,7 @@ jobs:
           echo "MAP_TO_CUSTOM_SECRETS=${{ inputs.mapOrgSecretsToCustom }}" >> $GITHUB_ENV
           echo "MAP_TO_APPSETTINGS_VARS=${{ inputs.mapOrgVarsToAppSettings }}" >> $GITHUB_ENV
           echo "MAP_TO_CUSTOM_VARS=${{ inputs.mapOrgVarsToCustom }}" >> $GITHUB_ENV
-          echo "CUSTOM_PREFIX=${{ inputs.customSecretsPrefix }}" >> $GITHUB_ENV
+          echo "CUSTOM_PREFIX=${{ inputs.customPrefix }}" >> $GITHUB_ENV
 
       # -------------------------------------------
       # Step 2: Determine Configuration Settings
