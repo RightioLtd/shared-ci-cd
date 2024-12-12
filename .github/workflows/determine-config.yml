@@ -224,15 +224,15 @@ jobs:
         run: |
           set -euo pipefail
 
-          # Validate that SECRETS_JSON and VARS_JSON are valid JSON before using them
+          # Validate that VARS_JSON and SECRETS_JSON are valid JSON before using them
           if [[ -z "$VARS_JSON" || "$(echo "$VARS_JSON" | jq type)" != '"object"' ]]; then
-            echo "VARS_JSON is either empty or not valid JSON. Exiting..."
-            exit 1
+            echo "VARS_JSON is either empty or not valid JSON. Using empty object."
+            VARS_JSON="{}"  # Set to empty object if invalid
           fi
 
           if [[ -z "$SECRETS_JSON" || "$(echo "$SECRETS_JSON" | jq type)" != '"object"' ]]; then
-            echo "SECRETS_JSON is either empty or not valid JSON. Exiting..."
-            exit 1
+            echo "SECRETS_JSON is either empty or not valid JSON. Using empty object."
+            SECRETS_JSON="{}"  # Set to empty object if invalid
           fi
 
           # Merge VARS_JSON with CUSTOM_VARS_JSON into a single vars object
@@ -252,6 +252,7 @@ jobs:
           # Store the merged results
           echo "MERGED_VARS_JSON=$(echo "$merged_vars" | jq -c .)" >> $GITHUB_ENV
           echo "MERGED_SECRETS_JSON=$(echo "$merged_secrets" | jq -c .)" >> $GITHUB_ENV
+
 
 
       # -------------------------------------------
