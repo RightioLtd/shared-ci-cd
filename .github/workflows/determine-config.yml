@@ -237,9 +237,8 @@ jobs:
           IFS=',' read -ra CUSTOM_SECRETS <<< "$MAP_TO_CUSTOM_SECRETS"
           IFS=',' read -ra CUSTOM_VARS <<< "$MAP_TO_CUSTOM_VARS"
 
-          # Flatten all requested keys
-          appsettings_secrets=("${APPSETTINGS_SECRETS[@]}" "${CUSTOM_SECRETS[@]}")
-          appsettings_vars=("${APPSETTINGS_VARS[@]}" "${CUSTOM_VARS[@]}")
+          # Flatten all requested keys (secrets and vars)
+          all_requested_keys=("${APPSETTINGS_SECRETS[@]}" "${APPSETTINGS_VARS[@]}" "${CUSTOM_SECRETS[@]}" "${CUSTOM_VARS[@]}")
 
           # Set affix based on environment (i.e., _DEV for development and training, _PROD for production)
           affix=""
@@ -254,7 +253,7 @@ jobs:
           missing_vars=()
 
           # Check for missing secrets in MAPPED_SECRETS_JSON
-          for secret in "${appsettings_secrets[@]}"; do
+          for secret in "${APPSETTINGS_SECRETS[@]}" "${CUSTOM_SECRETS[@]}"; do
             secret_with_affix="$secret$affix"
             if ! echo "$MAPPED_SECRETS_JSON" | jq -e "has(\"$secret_with_affix\")" > /dev/null; then
               missing_secrets+=("Secret: $secret_with_affix")
@@ -262,7 +261,7 @@ jobs:
           done
 
           # Check for missing vars in MAPPED_VARS_JSON
-          for var in "${appsettings_vars[@]}"; do
+          for var in "${APPSETTINGS_VARS[@]}" "${CUSTOM_VARS[@]}"; do
             var_with_affix="$var$affix"
             if ! echo "$MAPPED_VARS_JSON" | jq -e "has(\"$var_with_affix\")" > /dev/null; then
               missing_vars+=("Var: $var_with_affix")
@@ -299,9 +298,6 @@ jobs:
           else
             echo "All requested keys have been successfully mapped."
           fi
-
-
-
 
 
       # Step 6: Merge Vars and Secrets into Single Objects and Replace __ with _ in Custom Vars/Secrets Only
