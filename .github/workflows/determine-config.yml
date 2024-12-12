@@ -149,7 +149,11 @@ jobs:
                 to_entries
                 | map(
                     if .key | startswith($prefix) then
-                      .key = "APPSETTINGS__" + .key + $affix
+                        if .key | endswith($affix) then
+                          .key = "APPSETTINGS__" + .key
+                        else
+                          .key = "APPSETTINGS__" + .key + $affix
+                        end
                     else
                       . 
                     end
@@ -167,7 +171,11 @@ jobs:
                 to_entries
                 | map(
                     if .key | startswith($prefix) then
-                      .key = "'"$CUSTOM_PREFIX"'" + .key + $affix
+                      if .key | endswith($affix) then
+                        .key = "'"$CUSTOM_PREFIX"'" + .key
+                      else
+                        .key = "'"$CUSTOM_PREFIX"'" + .key + $affix
+                      end
                     else
                       . 
                     end
@@ -185,7 +193,11 @@ jobs:
                 to_entries
                 | map(
                     if .key | startswith($prefix) then
-                      .key = "APPSETTINGS__" + .key + $affix
+                      if .key | endswith($affix) then
+                        .key = "APPSETTINGS__" + .key
+                      else
+                        .key = "APPSETTINGS__" + .key + $affix
+                      end
                     else
                       . 
                     end
@@ -203,7 +215,11 @@ jobs:
                 to_entries
                 | map(
                     if .key | startswith($prefix) then
-                      .key = "'"$CUSTOM_PREFIX"'" + .key + $affix
+                      if .key | endswith($affix) then
+                        .key = "'"$CUSTOM_PREFIX"'" + .key
+                      else
+                        .key = "'"$CUSTOM_PREFIX"'" + .key + $affix
+                      end
                     else
                       . 
                     end
