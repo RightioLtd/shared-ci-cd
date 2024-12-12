@@ -343,22 +343,22 @@ jobs:
           fi
 
           # Merge VARS_JSON with CUSTOM_VARS_JSON into a single vars object
-          merged_vars=$(echo "{}" | jq --argjson vars "$VARS_JSON" --argjson custom_vars "$CUSTOM_VARS_JSON" '
+          variables=$(echo "{}" | jq --argjson vars "$VARS_JSON" --argjson custom_vars "$CUSTOM_VARS_JSON" '
             .variables = $vars + $custom_vars
           ')
 
           # Merge SECRETS_JSON with CUSTOM_SECRETS_JSON into a single secrets object
-          merged_secrets=$(echo "{}" | jq --argjson secrets "$SECRETS_JSON" --argjson custom_secrets "$CUSTOM_SECRETS_JSON" '
+          secrets=$(echo "{}" | jq --argjson secrets "$SECRETS_JSON" --argjson custom_secrets "$CUSTOM_SECRETS_JSON" '
             .secrets = $secrets + $custom_secrets
           ')
 
           # Replace __ with _ in keys for Custom Vars/Secrets only
-          merged_vars=$(echo "$merged_vars" | jq 'to_entries | map(.key |= gsub("__"; "_")) | from_entries')
-          merged_secrets=$(echo "$merged_secrets" | jq 'to_entries | map(.key |= gsub("__"; "_")) | from_entries')
+          variables=$(echo "$variables" | jq 'to_entries | map(.key |= gsub("__"; "_")) | from_entries')
+          secrets=$(echo "$secrets" | jq 'to_entries | map(.key |= gsub("__"; "_")) | from_entries')
 
           # Store the merged results
-          echo "MERGED_VARS_JSON=$(echo "$merged_vars" | jq -c .)" >> $GITHUB_ENV
-          echo "MERGED_SECRETS_JSON=$(echo "$merged_secrets" | jq -c .)" >> $GITHUB_ENV
+          echo "MERGED_VARS_JSON=$(echo "$variables" | jq -c .)" >> $GITHUB_ENV
+          echo "MERGED_SECRETS_JSON=$(echo "$secrets" | jq -c .)" >> $GITHUB_ENV
 
       # -------------------------------------------
       # Step 7: Create configuration.json with merged Vars and Secrets
@@ -382,8 +382,8 @@ jobs:
             --arg build_flag "$BUILD_FLAG" \
             --arg app_domain "$APP_DOMAIN" \
             --arg app_environment "$APP_ENVIRONMENT" \
-            --argjson variables "$MERGED_VARS_JSON" \
-            --argjson secrets "$MERGED_SECRETS_JSON" \
+            --argjson merged_vars "$MERGED_VARS_JSON" \
+            --argjson merged_secrets "$MERGED_SECRETS_JSON" \
             '{
               configuration: $configuration,
               build_flag: $build_flag,
