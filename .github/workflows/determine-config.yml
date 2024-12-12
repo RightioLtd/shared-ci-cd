@@ -212,7 +212,58 @@ jobs:
           echo "MAPPED_VARS_JSON=$(echo "$cleaned_vars" | jq -c .)" >> $GITHUB_ENV
           echo "CUSTOM_VARS_JSON=$(echo "$custom_vars" | jq -c .)" >> $GITHUB_ENV
 
-      # Step 5: Merge Vars and Secrets into Single Objects and Replace __ with _ in Custom Vars/Secrets Only
+      # Step 5: Verify if all requested Vars and Secrets are mapped
+      - name: 🔍 Verify All Requested Vars and Secrets are Mapped
+        shell: bash
+        env:
+          MAP_TO_APPSETTINGS_SECRETS: ${{ env.MAP_TO_APPSETTINGS_SECRETS }}
+          MAP_TO_APPSETTINGS_VARS: ${{ env.MAP_TO_APPSETTINGS_VARS }}
+          MAP_TO_CUSTOM_SECRETS: ${{ env.MAP_TO_CUSTOM_SECRETS }}
+          MAP_TO_CUSTOM_VARS: ${{ env.MAP_TO_CUSTOM_VARS }}
+          MAPPED_SECRETS_JSON: ${{ env.MAPPED_SECRETS_JSON }}
+          MAPPED_VARS_JSON: ${{ env.MAPPED_VARS_JSON }}
+        run: |
+          set -euo pipefail
+
+          # Convert inputs to arrays
+          IFS=',' read -ra APPSETTINGS_SECRETS <<< "$MAP_TO_APPSETTINGS_SECRETS"
+          IFS=',' read -ra APPSETTINGS_VARS <<< "$MAP_TO_APPSETTINGS_VARS"
+          IFS=',' read -ra CUSTOM_SECRETS <<< "$MAP_TO_CUSTOM_SECRETS"
+          IFS=',' read -ra CUSTOM_VARS <<< "$MAP_TO_CUSTOM_VARS"
+
+          # Flatten all expected keys
+          all_requested_keys=("${APPSETTINGS_SECRETS[@]}" "${APPSETTINGS_VARS[@]}" "${CUSTOM_SECRETS[@]}" "${CUSTOM_VARS[@]}")
+
+          # Check if each requested key exists in MAPPED_SECRETS_JSON and MAPPED_VARS_JSON
+          missing_keys=()
+
+          # Check in MAPPED_SECRETS_JSON
+          for key in "${all_requested_keys[@]}"; do
+            if ! echo "$MAPPED_SECRETS_JSON" | jq -e "has(\"$key\")" > /dev/null; then
+              missing_keys+=("Secret: $key")
+            fi
+          done
+
+          # Check in MAPPED_VARS_JSON
+          for key in "${all_requested_keys[@]}"; do
+            if ! echo "$MAPPED_VARS_JSON" | jq -e "has(\"$key\")" > /dev/null; then
+              missing_keys+=("Var: $key")
+            fi
+          done
+
+          # If there are missing keys, output them and fail the job
+          if [ ${#missing_keys[@]} -gt 0 ]; then
+            echo "ERROR: The following requested keys were not found in the mapped secrets/vars:"
+            for missing_key in "${missing_keys[@]}"; do
+              echo "$missing_key"
+            done
+            exit 1
+          else
+            echo "All requested keys have been successfully mapped."
+          fi
+
+
+      # Step 6: Merge Vars and Secrets into Single Objects and Replace __ with _ in Custom Vars/Secrets Only
       - name: 🔧 Merge Vars and Secrets and Replace __ with _ in Custom Vars/Secrets Only
         id: merge-vars-secrets
         shell: bash
@@ -253,10 +304,8 @@ jobs:
           echo "MERGED_VARS_JSON=$(echo "$merged_vars" | jq -c .)" >> $GITHUB_ENV
           echo "MERGED_SECRETS_JSON=$(echo "$merged_secrets" | jq -c .)" >> $GITHUB_ENV
 
-
-
       # -------------------------------------------
-      # Step 6: Create configuration.json with merged Vars and Secrets
+      # Step 7: Create configuration.json with merged Vars and Secrets
       # -------------------------------------------
       - name: 📝 Create configuration.json
         id: create-config-file
@@ -289,7 +338,7 @@ jobs:
             }' > configuration.json
 
       # -------------------------------------------
-      # Step 7: Validate Configuration File
+      # Step 8: Validate Configuration File
       # -------------------------------------------
       - name: ✅ Validate JSON File
         run: |
@@ -297,7 +346,7 @@ jobs:
           cat configuration.json
 
       # -------------------------------------------
-      # Step 8: Upload Artifact
+      # Step 9: Upload Artifact
       # -------------------------------------------
       - name: 📤 Upload Configuration as Artifact
         uses: actions/upload-artifact@v3
@@ -306,7 +355,7 @@ jobs:
           path: configuration.json
 
       # -------------------------------------------
-      # Step 9: Log Determined Environment
+      # Step 10: Log Determined Environment
       # -------------------------------------------
       - name: 📝 Log Environment
         run: echo "The determined environment is ${{ steps.determine-config.outputs.environment }}"
