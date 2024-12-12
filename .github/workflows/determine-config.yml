@@ -269,20 +269,42 @@ jobs:
           if [ ${#missing_keys[@]} -gt 0 ]; then
             echo "ERROR: The following requested keys were not found in the mapped secrets/vars:"
             echo "---------------------------------------------"
-            echo "The following keys are missing from the mapped secrets or variables (with affix):"
             
-            # Display each missing key with its context and affix
+            # Separate Secrets and Vars
+            missing_secrets=()
+            missing_vars=()
             for missing_key in "${missing_keys[@]}"; do
-              echo "- ${missing_key}"
+              if [[ "$missing_key" == Secret* ]]; then
+                missing_secrets+=("$missing_key")
+              else
+                missing_vars+=("$missing_key")
+              fi
             done
+
+            if [ ${#missing_secrets[@]} -gt 0 ]; then
+              echo "Missing Secrets (with affix):"
+              for secret in "${missing_secrets[@]}"; do
+                echo "- $secret"
+              done
+            fi
+
+            if [ ${#missing_vars[@]} -gt 0 ]; then
+              echo "Missing Vars (with affix):"
+              for var in "${missing_vars[@]}"; do
+                echo "- $var"
+              done
+            fi
 
             echo "---------------------------------------------"
             echo "Please ensure that these keys are defined in the appropriate environment variables and secrets."
+            echo "For missing secrets, check your GitHub secrets or environment configuration."
+            echo "For missing variables, check your environment variables configuration."
             echo "Environment: ${{ env.APP_ENVIRONMENT }}"
             exit 1
           else
             echo "All requested keys have been successfully mapped."
           fi
+
 
 
       # Step 6: Merge Vars and Secrets into Single Objects and Replace __ with _ in Custom Vars/Secrets Only
