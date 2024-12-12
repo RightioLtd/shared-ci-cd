@@ -382,8 +382,8 @@ jobs:
             --arg build_flag "$BUILD_FLAG" \
             --arg app_domain "$APP_DOMAIN" \
             --arg app_environment "$APP_ENVIRONMENT" \
-            --argjson merged_vars "$MERGED_VARS_JSON" \
-            --argjson merged_secrets "$MERGED_SECRETS_JSON" \
+            --argjson variables "$MERGED_VARS_JSON" \
+            --argjson secrets "$MERGED_SECRETS_JSON" \
             '{
               configuration: $configuration,
               build_flag: $build_flag,
