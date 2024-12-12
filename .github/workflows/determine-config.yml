@@ -255,15 +255,17 @@ jobs:
 
           # Check for missing secrets in MAPPED_SECRETS_JSON
           for secret in "${appsettings_secrets[@]}"; do
-            if ! echo "$MAPPED_SECRETS_JSON" | jq -e "has(\"$secret$affix\")" > /dev/null; then
-              missing_secrets+=("Secret: $secret$affix")
+            secret_with_affix="$secret$affix"
+            if ! echo "$MAPPED_SECRETS_JSON" | jq -e "has(\"$secret_with_affix\")" > /dev/null; then
+              missing_secrets+=("Secret: $secret_with_affix")
             fi
           done
 
           # Check for missing vars in MAPPED_VARS_JSON
           for var in "${appsettings_vars[@]}"; do
-            if ! echo "$MAPPED_VARS_JSON" | jq -e "has(\"$var$affix\")" > /dev/null; then
-              missing_vars+=("Var: $var$affix")
+            var_with_affix="$var$affix"
+            if ! echo "$MAPPED_VARS_JSON" | jq -e "has(\"$var_with_affix\")" > /dev/null; then
+              missing_vars+=("Var: $var_with_affix")
             fi
           done
 
@@ -297,6 +299,7 @@ jobs:
           else
             echo "All requested keys have been successfully mapped."
           fi
+
 
 
 
