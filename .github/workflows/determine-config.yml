@@ -6,27 +6,21 @@ on:
       branch:
         required: true
         type: string
-      mapOrgSecretsToAppSettings: # This is the keys list to map secrets to AppSettings
+      mapOrgSecretsToAppSettings:
         required: false
         type: string
-      mapOrgVarsToAppSettings: # This is the keys list to map vars to AppSettings
+      mapOrgVarsToAppSettings:
         required: false
         type: string
-      mapOrgSecretsToCustom: # This is the keys list to map secrets to Custom Secrets, for example, PUBLIC_ or REACT_APP_ or anything else, prefix is set in customPrefix
+      mapOrgSecretsToCustom:
         required: false
         type: string
-      mapOrgVarsToCustom: # This is the keys list to map vars to Custom Secrets, for example, PUBLIC_ or REACT_APP_ or anything else, prefix is set in customPrefix
+      mapOrgVarsToCustom:
         required: false
         type: string
-      customPrefix: # This is the prefix for custom secrets, for example, PUBLIC_ or REACT_APP_ or anything else
+      customPrefix:
         required: false
         type: string
-
-      # Combination of the above can provide full set of secrets for Backend and Frontend applications.
-      # Apps can be configured to read secrets and variables for backend .net core apps from AppSettings.json files.
-      # Apps can be configured to read secrets and variables for frontend React apps from .env files. These use custom prefix.
-      # List of keys to map needs to be explicitly provided, as it's not always needed and to avoid accidental mapping of all secrets.      
-      # Custom prefix is needed to inject correct prefix for custom secrets.
 
 jobs:
   set-config:
@@ -104,9 +98,9 @@ jobs:
           echo "RAW_SECRETS_JSON=$(echo "$secrets_json" | jq -c .)" >> $GITHUB_ENV
 
       # -------------------------------------------
-      # Step 4: Remove SSH_ Secrets and Optionally Map to AppSettings
+      # Step 4: Process and Map Secrets to AppSettings/Custom Secrets
       # -------------------------------------------
-      - name: 🔧 Process Secrets (Remove SSH_, Map if needed)
+      - name: 🔧 Process Secrets (Map if needed)
         shell: bash
         env:
           RAW_SECRETS_JSON: ${{ env.RAW_SECRETS_JSON }}
@@ -151,7 +145,7 @@ jobs:
                     if .key | startswith($prefix) then
                       .key = "APPSETTINGS__" + .key
                     else
-                      .
+                      . 
                     end
                   )
                 | from_entries
@@ -169,7 +163,7 @@ jobs:
                     if .key | startswith($prefix) then
                       .key = "'"$CUSTOM_PREFIX"'" + .key
                     else
-                      .
+                      . 
                     end
                   )
                 | from_entries
@@ -187,7 +181,7 @@ jobs:
                     if .key | startswith($prefix) then
                       .key = "APPSETTINGS__" + .key
                     else
-                      .
+                      . 
                     end
                   )
                 | from_entries
@@ -205,7 +199,7 @@ jobs:
                     if .key | startswith($prefix) then
                       .key = "'"$CUSTOM_PREFIX"'" + .key
                     else
-                      .
+                      . 
                     end
                   )
                 | from_entries
@@ -219,83 +213,38 @@ jobs:
           echo "CUSTOM_VARS_JSON=$(echo "$custom_vars" | jq -c .)" >> $GITHUB_ENV
 
       # -------------------------------------------
-      # Step 5: Environment-Based Filtering
+      # Step 5: Merge Vars and Secrets into Single Objects and Replace __ with _ in Custom Vars/Secrets Only
       # -------------------------------------------
-      - name: 🔧 Apply Environment-Based Filtering
+      - name: 🔧 Merge Vars and Secrets and Replace __ with _ in Custom Vars/Secrets Only
+        id: merge-vars-secrets
         shell: bash
         env:
-          APP_ENVIRONMENT: ${{ env.APP_ENVIRONMENT }}
-          MAPPED_SECRETS_JSON: ${{ env.MAPPED_SECRETS_JSON }}
+          VARS_JSON: ${{ env.VARS_JSON }}
+          SECRETS_JSON: ${{ env.SECRETS_JSON }}
           CUSTOM_SECRETS_JSON: ${{ env.CUSTOM_SECRETS_JSON }}
-          MAPPED_VARS_JSON: ${{ env.MAPPED_VARS_JSON }}
           CUSTOM_VARS_JSON: ${{ env.CUSTOM_VARS_JSON }}
         run: |
           set -euo pipefail
-      
-          # Re-parse the JSON to ensure we have proper JSON objects
-          vars_json=$(echo "$MAPPED_VARS_JSON" | jq -c .)
-          secrets_json=$(echo "$MAPPED_SECRETS_JSON" | jq -c .)
-          secrets_json_custom=$(echo "$CUSTOM_SECRETS_JSON" | jq -c .)
-          vars_json_custom=$(echo "$CUSTOM_VARS_JSON" | jq -c .)
-      
-          if [ "$APP_ENVIRONMENT" = "production" ]; then
-            # Always remove DEV keys, no exception
-            vars_json=$(echo "$vars_json" | jq 'to_entries | map(select(.key | test("DEV"; "i") | not)) | from_entries')
-            secrets_json=$(echo "$secrets_json" | jq 'to_entries | map(select(.key | test("DEV"; "i") | not)) | from_entries')
-            secrets_json_custom=$(echo "$secrets_json_custom" | jq 'to_entries | map(select(.key | test("DEV"; "i") | not)) | from_entries')
-            vars_json_custom=$(echo "$vars_json_custom" | jq 'to_entries | map(select(.key | test("DEV"; "i") | not)) | from_entries')
-          else
-            # Always remove PROD keys, no exception
-            vars_json=$(echo "$vars_json" | jq 'to_entries | map(select(.key | test("PROD"; "i") | not)) | from_entries')
-            secrets_json=$(echo "$secrets_json" | jq 'to_entries | map(select(.key | test("PROD"; "i") | not)) | from_entries')
-            secrets_json_custom=$(echo "$secrets_json_custom" | jq 'to_entries | map(select(.key | test("PROD"; "i") | not)) | from_entries')
-            vars_json_custom=$(echo "$vars_json_custom" | jq 'to_entries | map(select(.key | test("PROD"; "i") | not)) | from_entries')
-          fi
-      
-          # Normalize keys: remove _DEV_ or _PROD_
-          vars_json=$(echo "$vars_json" | jq 'to_entries | map(.key |= sub("_(DEV|PROD)"; ""; "i")) | from_entries')
-          secrets_json=$(echo "$secrets_json" | jq 'to_entries | map(.key |= sub("_(DEV|PROD)"; ""; "i")) | from_entries')
-          secrets_json_custom=$(echo "$secrets_json_custom" | jq 'to_entries | map(.key |= sub("_(DEV|PROD)"; ""; "i")) | from_entries')
-          vars_json_custom=$(echo "$vars_json_custom" | jq 'to_entries | map(.key |= sub("_(DEV|PROD)"; ""; "i")) | from_entries')
-      
-          echo "ENV_FILTERED_VARS_JSON=$(echo "$vars_json" | jq -c .)" >> $GITHUB_ENV
-          echo "ENV_FILTERED_SECRETS_JSON=$(echo "$secrets_json" | jq -c .)" >> $GITHUB_ENV
-          echo "CUSTOM_FILTERED_SECRETS_JSON=$(echo "$secrets_json_custom" | jq -c .)" >> $GITHUB_ENV
-          echo "CUSTOM_FILTERED_VARS_JSON=$(echo "$vars_json_custom" | jq -c .)" >> $GITHUB_ENV
-      
-
-      # -------------------------------------------
-      # Step 6: Prefix Filtering if Needed
-      # -------------------------------------------
-      - name: 🔧 Apply Prefix Filtering
-        if: ${{ env.ALLOW_PREFIX != '' }}
-        shell: bash
-        env:
-          ALLOW_PREFIX: ${{ env.ALLOW_PREFIX }}
-          ENV_FILTERED_VARS_JSON: ${{ env.ENV_FILTERED_VARS_JSON }}
-          ENV_FILTERED_SECRETS_JSON: ${{ env.ENV_FILTERED_SECRETS_JSON }}
-        run: |
-          set -euo pipefail
-          vars_json="$ENV_FILTERED_VARS_JSON"
-          secrets_json="$ENV_FILTERED_SECRETS_JSON"
-
-          secrets_json=$(echo "$secrets_json" | jq --arg prefix "$ALLOW_PREFIX" '
-            to_entries | map(select(.key | startswith($prefix))) | from_entries
+          # Merge VARS_JSON with CUSTOM_VARS_JSON into a single vars object
+          merged_vars=$(echo "{}" | jq --argjson vars "$VARS_JSON" --argjson custom_vars "$CUSTOM_VARS_JSON" '
+            .vars = $vars + $custom_vars
           ')
 
-          echo "VARS_JSON=$(echo "$vars_json" | jq -c .)" >> $GITHUB_ENV
-          echo "SECRETS_JSON=$(echo "$secrets_json" | jq -c .)" >> $GITHUB_ENV
+          # Merge SECRETS_JSON with CUSTOM_SECRETS_JSON into a single secrets object
+          merged_secrets=$(echo "{}" | jq --argjson secrets "$SECRETS_JSON" --argjson custom_secrets "$CUSTOM_SECRETS_JSON" '
+            .secrets = $secrets + $custom_secrets
+          ')
 
-      - name: 🔧 No Prefix Filtering Needed
-        if: ${{ env.ALLOW_PREFIX == '' }}
-        run: |
-          echo "VARS_JSON=${{ env.ENV_FILTERED_VARS_JSON }}" >> $GITHUB_ENV
-          echo "SECRETS_JSON=${{ env.ENV_FILTERED_SECRETS_JSON }}" >> $GITHUB_ENV
-          echo "CUSTOM_SECRETS_JSON=${{ env.CUSTOM_FILTERED_SECRETS_JSON }}" >> $GITHUB_ENV
-          echo "CUSTOM_VARS_JSON=${{ env.CUSTOM_FILTERED_VARS_JSON }}" >> $GITHUB_ENV
+          # Replace __ with _ in keys for Custom Vars/Secrets only
+          merged_vars=$(echo "$merged_vars" | jq 'to_entries | map(.key |= gsub("__"; "_")) | from_entries')
+          merged_secrets=$(echo "$merged_secrets" | jq 'to_entries | map(.key |= gsub("__"; "_")) | from_entries')
+
+          # Store the merged results
+          echo "MERGED_VARS_JSON=$(echo "$merged_vars" | jq -c .)" >> $GITHUB_ENV
+          echo "MERGED_SECRETS_JSON=$(echo "$merged_secrets" | jq -c .)" >> $GITHUB_ENV
 
       # -------------------------------------------
-      # Step 7: Create configuration.json
+      # Step 6: Create configuration.json with merged Vars and Secrets
       # -------------------------------------------
       - name: 📝 Create configuration.json
         id: create-config-file
@@ -305,10 +254,8 @@ jobs:
           BUILD_FLAG: ${{ env.BUILD_FLAG }}
           APP_DOMAIN: ${{ env.APP_DOMAIN }}
           APP_ENVIRONMENT: ${{ env.APP_ENVIRONMENT }}
-          VARS_JSON: ${{ env.VARS_JSON }}
-          SECRETS_JSON: ${{ env.SECRETS_JSON }}
-          CUSTOM_SECRETS_JSON: ${{ env.CUSTOM_SECRETS_JSON }}
-          CUSTOM_VARS_JSON: ${{ env.CUSTOM_VARS_JSON }}
+          MERGED_VARS_JSON: ${{ env.MERGED_VARS_JSON }}
+          MERGED_SECRETS_JSON: ${{ env.MERGED_SECRETS_JSON }}
         run: |
           set -euo pipefail
           echo "Creating artifact configuration.json"
@@ -318,21 +265,19 @@ jobs:
             --arg build_flag "$BUILD_FLAG" \
             --arg app_domain "$APP_DOMAIN" \
             --arg app_environment "$APP_ENVIRONMENT" \
-            --argjson static_variables "$VARS_JSON" \
-            --argjson static_secrets "$SECRETS_JSON" \
-            --argjson custom_secrets "$CUSTOM_SECRETS_JSON" \
-            --argjson custom_vars "$CUSTOM_VARS_JSON" \
+            --argjson merged_vars "$MERGED_VARS_JSON" \
+            --argjson merged_secrets "$MERGED_SECRETS_JSON" \
             '{
               configuration: $configuration,
               build_flag: $build_flag,
               app_domain: $app_domain,
               app_environment: $app_environment,
-              static_variables: $static_variables,
-              static_secrets: $static_secrets
+              variables: $merged_vars,
+              secrets: $merged_secrets
             }' > configuration.json
 
       # -------------------------------------------
-      # Step 8: Validate Configuration File
+      # Step 7: Validate Configuration File
       # -------------------------------------------
       - name: ✅ Validate JSON File
         run: |
@@ -340,7 +285,7 @@ jobs:
           cat configuration.json
 
       # -------------------------------------------
-      # Step 9: Upload Artifact
+      # Step 8: Upload Artifact
       # -------------------------------------------
       - name: 📤 Upload Configuration as Artifact
         uses: actions/upload-artifact@v3
@@ -349,7 +294,7 @@ jobs:
           path: configuration.json
 
       # -------------------------------------------
-      # Step 10: Log Determined Environment
+      # Step 9: Log Determined Environment
       # -------------------------------------------
       - name: 📝 Log Environment
         run: echo "The determined environment is ${{ steps.determine-config.outputs.environment }}"
