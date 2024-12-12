@@ -344,7 +344,7 @@ jobs:
 
           # Merge VARS_JSON with CUSTOM_VARS_JSON into a single vars object
           merged_vars=$(echo "{}" | jq --argjson vars "$VARS_JSON" --argjson custom_vars "$CUSTOM_VARS_JSON" '
-            .vars = $vars + $custom_vars
+            .variables = $vars + $custom_vars
           ')
 
           # Merge SECRETS_JSON with CUSTOM_SECRETS_JSON into a single secrets object
@@ -389,8 +389,8 @@ jobs:
               build_flag: $build_flag,
               app_domain: $app_domain,
               app_environment: $app_environment,
-              variables: $merged_vars,
-              secrets: $merged_secrets
+              $merged_vars,
+              $merged_secrets
             }' > configuration.json
 
       # -------------------------------------------
