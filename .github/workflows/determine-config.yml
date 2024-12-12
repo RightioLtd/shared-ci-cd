@@ -137,7 +137,7 @@ jobs:
             | from_entries
           ')
 
-          # Check for whitelist keys and include them even if they're not in the mapOrgVarsToAppSettings or mapOrgSecretsToCustom
+          # Add the affix and prefix for org/repo whitelisted secrets
           for secret in "${ORG_WHITELIST_SECRETS[@]}"; do
             cleaned=$(echo "$cleaned" | jq --arg secret "$secret" '
               .[$secret] = "WHITELISTED_SECRET"
@@ -150,8 +150,93 @@ jobs:
             ')
           done
 
-          # Process the rest of the secrets and vars with affix logic
-          # Add the affix to each key based on the environment (development, production, etc.)
+          # 2. If mapOrgSecretsToAppSettings: is provided, rename keys to start with APPSETTINGS__
+          if [ -n "${MAP_TO_APPSETTINGS_SECRETS}" ]; then
+            prefixes=$(echo "$MAP_TO_APPSETTINGS_SECRETS" | tr ',' ' ')
+            for prefix in $prefixes; do
+              cleaned=$(echo "$cleaned" | jq --arg prefix "$prefix" --arg affix "$affix" '
+                to_entries
+                | map(
+                    if .key | startswith($prefix) then
+                        if .key | endswith($affix) then
+                          .key = "APPSETTINGS__" + .key
+                        else
+                          .key = "APPSETTINGS__" + .key + $affix
+                        end
+                    else
+                      . 
+                    end
+                  )
+                | from_entries
+              ')
+            done
+          fi
+
+          # 3. If mapOrgSecretsToCustom: is provided, rename keys to start with CUSTOM_PREFIX
+          if [ -n "${MAP_TO_CUSTOM_SECRETS}" ]; then
+            prefixes=$(echo "$MAP_TO_CUSTOM_SECRETS" | tr ',' ' ')
+            for prefix in $prefixes; do
+              custom=$(echo "$custom" | jq --arg prefix "$prefix" --arg affix "$affix" '
+                to_entries
+                | map(
+                    if .key | startswith($prefix) then
+                      if .key | endswith($affix) then
+                        .key = "'"$CUSTOM_PREFIX"'" + .key
+                      else
+                        .key = "'"$CUSTOM_PREFIX"'" + .key + $affix
+                      end
+                    else
+                      . 
+                    end
+                  )
+                | from_entries
+              ')
+            done
+          fi
+
+          # 4. If mapOrgVarsToAppSettings: is provided, rename keys to start with APPSETTINGS__
+          if [ -n "${MAP_TO_APPSETTINGS_VARS}" ]; then
+            prefixes=$(echo "$MAP_TO_APPSETTINGS_VARS" | tr ',' ' ')
+            for prefix in $prefixes; do
+              cleaned_vars=$(echo "$cleaned_vars" | jq --arg prefix "$prefix" --arg affix "$affix" '
+                to_entries
+                | map(
+                    if .key | startswith($prefix) then
+                      if .key | endswith($affix) then
+                        .key = "APPSETTINGS__" + .key
+                      else
+                        .key = "APPSETTINGS__" + .key + $affix
+                      end
+                    else
+                      . 
+                    end
+                  )
+                | from_entries
+              ')
+            done
+          fi
+
+          # 5. If mapOrgVarsToCustom: is provided, rename keys to start with CUSTOM_PREFIX
+          if [ -n "${MAP_TO_CUSTOM_VARS}" ]; then
+            prefixes=$(echo "$MAP_TO_CUSTOM_VARS" | tr ',' ' ')
+            for prefix in $prefixes; do
+              custom_vars=$(echo "$custom_vars" | jq --arg prefix "$prefix" --arg affix "$affix" '
+                to_entries
+                | map(
+                    if .key | startswith($prefix) then
+                      if .key | endswith($affix) then
+                        .key = "'"$CUSTOM_PREFIX"'" + .key
+                      else
+                        .key = "'"$CUSTOM_PREFIX"'" + .key + $affix
+                      end
+                    else
+                      . 
+                    end
+                  )
+                | from_entries
+              ')
+            done
+          fi
 
           echo "MAPPED_SECRETS_JSON=$(echo "$cleaned" | jq -c .)" >> $GITHUB_ENV
           echo "CUSTOM_SECRETS_JSON=$(echo "$custom" | jq -c .)" >> $GITHUB_ENV
