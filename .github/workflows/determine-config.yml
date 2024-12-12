@@ -108,113 +108,78 @@ jobs:
         run: |
           set -euo pipefail
 
-          # Hardcoded whitelists for organization and repo secrets
-          ORG_WHITELIST_SECRETS=("ORG_SECRET_1" "ORG_SECRET_2")
-          REPO_WHITELIST_SECRETS=("REPO_SECRET_1" "REPO_SECRET_2")
-
-          # Add affix based on environment (i.e., _DEV for development and training, _PROD for production)
-          affix=""
-          if [[ "${APP_ENVIRONMENT}" == "production" ]]; then
-            affix="_PROD"
-          elif [[ "${APP_ENVIRONMENT}" == "development" || "${APP_ENVIRONMENT}" == "training" ]]; then
-            affix="_DEV"
+          if [[ "$APP_ENVIRONMENT" == "production" ]]; then
+            RAW_VARS_JSON=$(echo "$RAW_VARS_JSON" | jq 'to_entries | map(select(.key | test("_DEV$") | not)) | from_entries')
+            RAW_SECRETS_JSON=$(echo "$RAW_SECRETS_JSON" | jq 'to_entries | map(select(.key | test("_DEV$") | not)) | from_entries')
+          elif [[ "$APP_ENVIRONMENT" == "development" || "$APP_ENVIRONMENT" == "training" ]]; then
+            RAW_VARS_JSON=$(echo "$RAW_VARS_JSON" | jq 'to_entries | map(select(.key | test("_PROD$") | not)) | from_entries')
+            RAW_SECRETS_JSON=$(echo "$RAW_SECRETS_JSON" | jq 'to_entries | map(select(.key | test("_PROD$") | not)) | from_entries')
           fi
 
-          # 1. Remove SSH_ secrets
-          cleaned=$(echo "$RAW_SECRETS_JSON" | jq '
+          # Remove Affixes from keys
+          RAW_VARS_JSON=$(echo "$RAW_VARS_JSON" | jq 'to_entries | map(.key |= (sub("_DEV$"; "") | sub("_PROD$"; ""))) | from_entries')
+          RAW_SECRETS_JSON=$(echo "$RAW_SECRETS_JSON" | jq 'to_entries | map(.key |= (sub("_DEV$"; "") | sub("_PROD$"; ""))) | from_entries')
+
+          # Print Vars and Secrets JSON
+          echo "RAW_VARS_JSON=$RAW_VARS_JSON"
+          echo "RAW_SECRETS_JSON=$RAW_SECRETS_JSON"
+
+          # Remove Ones that start with SSH_
+          RAW_VARS_JSON=$(echo "$RAW_VARS_JSON" | jq 'to_entries | map(select(.key | startswith("SSH_") | not)) | from_entries')
+          RAW_SECRETS_JSON=$(echo "$RAW_SECRETS_JSON" | jq 'to_entries | map(select(.key | startswith("SSH_") | not)) | from_entries')
+
+          # Print Vars and Secrets JSON
+          echo "RAW_VARS_JSON=$RAW_VARS_JSON"
+          echo "RAW_SECRETS_JSON=$RAW_SECRETS_JSON"
+
+          # Process RAW_VARS_JSON and RAW_SECRETS_JSON, remove any keys that are not present in the MAP_TO_APPSETTINGS_SECRETS or MAP_TO_CUSTOM_VARS
+          # Create list of keys to keep, merging the MAP_TO_APPSETTINGS_VARS and MAP_TO_CUSTOM_VARS
+          KEEP_VARS_KEYS=$(echo "$MAP_TO_APPSETTINGS_VARS,$MAP_TO_CUSTOM_VARS" | tr ',' '\n' | sort | uniq)
+
+          # Filter out keys that are not in the KEEP_VARS_KEYS list
+          RAW_VARS_JSON=$(echo "$RAW_VARS_JSON" | jq --arg keep_keys "$KEEP_VARS_KEYS" '
             to_entries
-            | map(select(.key | startswith("SSH_") | not))
-            | from_entries
-          ')
-          custom=$(echo "$RAW_SECRETS_JSON" | jq '
-            to_entries
-            | map(select(.key | startswith("SSH_") | not))
+            | map(select(.key as $k | $keep_keys | index($k)))
             | from_entries
           ')
 
-          cleaned_vars=$(echo "$RAW_VARS_JSON" | jq '
+          # Create list of keys to keep, merging the MAP_TO_APPSETTINGS_SECRETS and MAP_TO_CUSTOM_SECRETS
+          KEEP_SECRETS_KEYS=$(echo "$MAP_TO_APPSETTINGS_SECRETS,$MAP_TO_CUSTOM_SECRETS" | tr ',' '\n' | sort | uniq)
+
+          # Filter out keys that are not in the KEEP_SECRETS_KEYS list
+          RAW_SECRETS_JSON=$(echo "$RAW_SECRETS_JSON" | jq --arg keep_keys "$KEEP_SECRETS_KEYS" '
             to_entries
-            | map(select(.key | startswith("SSH_") | not))
-            | from_entries
-          ')
-          custom_vars=$(echo "$RAW_VARS_JSON" | jq '
-            to_entries
-            | map(select(.key | startswith("SSH_") | not))
+            | map(select(.key as $k | $keep_keys | index($k)))
             | from_entries
           ')
 
-          # Add the affix and prefix for org/repo whitelisted secrets
-          for secret in "${ORG_WHITELIST_SECRETS[@]}"; do
-            cleaned=$(echo "$cleaned" | jq --arg secret "$secret" '
-              .[$secret] = "WHITELISTED_SECRET"
+          
+
+          if [[ -n "$MAP_TO_APPSETTINGS_SECRETS" ]]; then
+          for prefix in $(echo "$MAP_TO_APPSETTINGS_SECRETS" | tr ',' ' '); do
+            RAW_SECRETS_JSON=$(echo "$RAW_SECRETS_JSON" | jq --arg prefix "$prefix" '
+              to_entries
+              | map(
+                  if .key | startswith($prefix) then
+                      .key = "APPSETTINGS__" + .key
+                  else
+                    .
+                  end
+                )
+              | from_entries
             ')
           done
-
-          for secret in "${REPO_WHITELIST_SECRETS[@]}"; do
-            custom=$(echo "$custom" | jq --arg secret "$secret" '
-              .[$secret] = "WHITELISTED_SECRET"
-            ')
-          done
-
-          # 2. If mapOrgSecretsToAppSettings: is provided, rename keys to start with APPSETTINGS__
-          if [ -n "${MAP_TO_APPSETTINGS_SECRETS}" ]; then
-            prefixes=$(echo "$MAP_TO_APPSETTINGS_SECRETS" | tr ',' ' ')
-            for prefix in $prefixes; do
-              cleaned=$(echo "$cleaned" | jq --arg prefix "$prefix" --arg affix "$affix" '
-                to_entries
-                | map(
-                    if .key | startswith($prefix) then
-                        if .key | endswith($affix) then
-                          .key = "APPSETTINGS__" + .key
-                        else
-                          .key = "APPSETTINGS__" + .key + $affix
-                        end
-                    else
-                      . 
-                    end
-                  )
-                | from_entries
-              ')
-            done
           fi
 
-          # 3. If mapOrgSecretsToCustom: is provided, rename keys to start with CUSTOM_PREFIX
-          if [ -n "${MAP_TO_CUSTOM_SECRETS}" ]; then
-            prefixes=$(echo "$MAP_TO_CUSTOM_SECRETS" | tr ',' ' ')
-            for prefix in $prefixes; do
-              custom=$(echo "$custom" | jq --arg prefix "$prefix" --arg affix "$affix" '
+          if [[ -n "$MAP_TO_APPSETTINGS_VARS" ]]; then
+            for prefix in $(echo "$MAP_TO_APPSETTINGS_VARS" | tr ',' ' '); do
+              RAW_VARS_JSON=$(echo "$RAW_VARS_JSON" | jq --arg prefix "$prefix" '
                 to_entries
                 | map(
                     if .key | startswith($prefix) then
-                      if .key | endswith($affix) then
-                        .key = "'"$CUSTOM_PREFIX"'" + .key
-                      else
-                        .key = "'"$CUSTOM_PREFIX"'" + .key + $affix
-                      end
-                    else
-                      . 
-                    end
-                  )
-                | from_entries
-              ')
-            done
-          fi
-
-          # 4. If mapOrgVarsToAppSettings: is provided, rename keys to start with APPSETTINGS__
-          if [ -n "${MAP_TO_APPSETTINGS_VARS}" ]; then
-            prefixes=$(echo "$MAP_TO_APPSETTINGS_VARS" | tr ',' ' ')
-            for prefix in $prefixes; do
-              cleaned_vars=$(echo "$cleaned_vars" | jq --arg prefix "$prefix" --arg affix "$affix" '
-                to_entries
-                | map(
-                    if .key | startswith($prefix) then
-                      if .key | endswith($affix) then
                         .key = "APPSETTINGS__" + .key
-                      else
-                        .key = "APPSETTINGS__" + .key + $affix
-                      end
                     else
-                      . 
+                      .
                     end
                   )
                 | from_entries
@@ -222,21 +187,15 @@ jobs:
             done
           fi
 
-          # 5. If mapOrgVarsToCustom: is provided, rename keys to start with CUSTOM_PREFIX
-          if [ -n "${MAP_TO_CUSTOM_VARS}" ]; then
-            prefixes=$(echo "$MAP_TO_CUSTOM_VARS" | tr ',' ' ')
-            for prefix in $prefixes; do
-              custom_vars=$(echo "$custom_vars" | jq --arg prefix "$prefix" --arg affix "$affix" '
+          if [[ -n "$MAP_TO_CUSTOM_SECRETS" ]]; then
+            for prefix in $(echo "$MAP_TO_CUSTOM_SECRETS" | tr ',' ' '); do
+              RAW_SECRETS_JSON=$(echo "$RAW_SECRETS_JSON" | jq --arg prefix "$prefix" '
                 to_entries
                 | map(
                     if .key | startswith($prefix) then
-                      if .key | endswith($affix) then
                         .key = "'"$CUSTOM_PREFIX"'" + .key
-                      else
-                        .key = "'"$CUSTOM_PREFIX"'" + .key + $affix
-                      end
                     else
-                      . 
+                      .
                     end
                   )
                 | from_entries
@@ -244,10 +203,24 @@ jobs:
             done
           fi
 
-          echo "MAPPED_SECRETS_JSON=$(echo "$cleaned" | jq -c .)" >> $GITHUB_ENV
-          echo "CUSTOM_SECRETS_JSON=$(echo "$custom" | jq -c .)" >> $GITHUB_ENV
-          echo "MAPPED_VARS_JSON=$(echo "$cleaned_vars" | jq -c .)" >> $GITHUB_ENV
-          echo "CUSTOM_VARS_JSON=$(echo "$custom_vars" | jq -c .)" >> $GITHUB_ENV
+          if [[ -n "$MAP_TO_CUSTOM_VARS" ]]; then
+            for prefix in $(echo "$MAP_TO_CUSTOM_VARS" | tr ',' ' '); do
+              RAW_VARS_JSON=$(echo "$RAW_VARS_JSON" | jq --arg prefix "$prefix" '
+                to_entries
+                | map(
+                    if .key | startswith($prefix) then
+                        .key = "'"$CUSTOM_PREFIX"'" + .key
+                    else
+                      .
+                    end
+                  )
+                | from_entries
+              ')
+            done
+          fi
+
+          echo "MAPPED_SECRETS_JSON=$(echo "$RAW_SECRETS_JSON" | jq -c .)" >> $GITHUB_ENV
+          echo "MAPPED_VARS_JSON=$(echo "$RAW_VARS_JSON" | jq -c .)" >> $GITHUB_ENV
 
       # Step 5: Verify if all requested Vars and Secrets are mapped
       - name: 🔍 Verify All Requested Vars and Secrets are Mapped
