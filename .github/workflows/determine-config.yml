@@ -265,18 +265,21 @@ jobs:
           #   affix="_DEV"
           # fi
 
-          # Add appsettings prefix if applicable
-          if [[ -n "${MAP_TO_APPSETTINGS_SECRETS}" || -n "${MAP_TO_APPSETTINGS_VARS}" ]]; then
+          # Set prefix based on map type (i.e., APPSETTINGS__ for appsettings, CUSTOM_PREFIX for custom)
+          appsettings_prefix="APPSETTINGS__"
+          custom_prefix="${CUSTOM_PREFIX}"
+          if [[ "${MAP_TO_APPSETTINGS_SECRETS}" || "${MAP_TO_APPSETTINGS_VARS}" ]]; then
+            # Map to with prefix
             APPSETTINGS_SECRETS=("${APPSETTINGS_SECRETS[@]/#/$appsettings_prefix}")
             APPSETTINGS_VARS=("${APPSETTINGS_VARS[@]/#/$appsettings_prefix}")
           fi
 
-          # Add custom prefix if applicable
-          if [[ -n "${MAP_TO_CUSTOM_SECRETS}" || -n "${MAP_TO_CUSTOM_VARS}" ]]; then
+          if [[ "${MAP_TO_CUSTOM_SECRETS}" || "${MAP_TO_CUSTOM_VARS}" ]]; then
+            # Map to with prefix
             CUSTOM_SECRETS=("${CUSTOM_SECRETS[@]/#/$custom_prefix}")
             CUSTOM_VARS=("${CUSTOM_VARS[@]/#/$custom_prefix}")
           fi
-          
+
           echo "Appsettings Prefix: $appsettings_prefix"
           echo "Custom Prefix: $custom_prefix"
           echo "Affix: $affix"
