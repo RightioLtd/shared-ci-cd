@@ -227,6 +227,9 @@ jobs:
             done
           fi
 
+          echo "RAW_VARS_JSON=$RAW_VARS_JSON"
+          echo "RAW_SECRETS_JSON=$RAW_SECRETS_JSON"
+
           echo "MAPPED_SECRETS_JSON=$(echo "$RAW_SECRETS_JSON" | jq -c .)" >> $GITHUB_ENV
           echo "MAPPED_VARS_JSON=$(echo "$RAW_VARS_JSON" | jq -c .)" >> $GITHUB_ENV
 
