@@ -255,6 +255,8 @@ jobs:
           # Flatten all requested keys (secrets and vars)
           all_requested_keys=("${APPSETTINGS_SECRETS[@]}" "${APPSETTINGS_VARS[@]}" "${CUSTOM_SECRETS[@]}" "${CUSTOM_VARS[@]}")
 
+          echo "All Requested Keys: ${all_requested_keys[@]}"
+
           # Set affix based on environment (i.e., _DEV for development and training, _PROD for production)
           affix=""
           # if [[ "${APP_ENVIRONMENT}" == "production" ]]; then
@@ -277,6 +279,12 @@ jobs:
             CUSTOM_VARS=("${CUSTOM_VARS[@]/#/$CUSTOM_PREFIX}")
           fi
 
+          echo "Prefix: $prefix"
+          echo "Affix: $affix"
+          echo "Appsettings Secrets: ${APPSETTINGS_SECRETS[@]}"
+          echo "Appsettings Vars: ${APPSETTINGS_VARS[@]}"
+          echo "Custom Secrets: ${CUSTOM_SECRETS[@]}"
+          echo "Custom Vars: ${CUSTOM_VARS[@]}"
 
           # Initialize arrays to track missing keys
           missing_secrets=()
