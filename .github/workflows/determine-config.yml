@@ -121,8 +121,8 @@ jobs:
           RAW_SECRETS_JSON=$(echo "$RAW_SECRETS_JSON" | jq 'to_entries | map(.key |= (sub("_DEV$"; "") | sub("_PROD$"; ""))) | from_entries')
 
           # Remove Prefixes from keys
-          RAW_VARS_JSON=$(echo "$RAW_VARS_JSON" | jq 'to_entries | map(.key |= (sub("^APPSETTINGS__"; "") | (sub("^CUSTOM_PREFIX"; "")))) | from_entries')
-          RAW_SECRETS_JSON=$(echo "$RAW_SECRETS_JSON" | jq 'to_entries | map(.key |= (sub("^APPSETTINGS__"; "") | (sub("^CUSTOM_PREFIX"; "")))) | from_entries')
+          RAW_VARS_JSON=$(echo "$RAW_VARS_JSON" | jq --arg prefix "$CUSTOM_PREFIX" 'to_entries | map(.key |= (sub("^APPSETTINGS__"; "") | sub("^" + $prefix; ""))) | from_entries')
+          RAW_SECRETS_JSON=$(echo "$RAW_SECRETS_JSON" | jq --arg prefix "$CUSTOM_PREFIX" 'to_entries | map(.key |= (sub("^APPSETTINGS__"; "") | sub("^" + $prefix; ""))) | from_entries')
 
           # Print Vars and Secrets JSON
           echo "RAW_VARS_JSON=$RAW_VARS_JSON"
