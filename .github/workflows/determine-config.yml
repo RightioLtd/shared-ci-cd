@@ -138,9 +138,7 @@ jobs:
 
           # Process RAW_VARS_JSON and RAW_SECRETS_JSON, remove any keys that are not present in the MAP_TO_APPSETTINGS_SECRETS or MAP_TO_CUSTOM_VARS
           # Create list of keys to keep, merging the MAP_TO_APPSETTINGS_VARS and MAP_TO_CUSTOM_VARS
-          KEEP_VARS_KEYS=$(echo "$MAP_TO_APPSETTINGS_VARS,$MAP_TO_CUSTOM_VARS" | tr ',' '\n' | sort | uniq)
-          # Add DATABASE__DATABASE_SERVER to the list of keys to keep
-          KEEP_VARS_KEYS="$KEEP_VARS_KEYS,DATABASE__DATABASE_SERVER"
+          KEEP_VARS_KEYS=$(echo "$MAP_TO_APPSETTINGS_VARS,$MAP_TO_CUSTOM_VARS,DATABASE__DATABASE_SERVER" | tr ',' '\n' | sort | uniq)
 
           # Filter out keys that are not in the KEEP_VARS_KEYS list
           RAW_VARS_JSON=$(echo "$RAW_VARS_JSON" | jq --arg keep_keys "$KEEP_VARS_KEYS" '
@@ -150,10 +148,7 @@ jobs:
           ')
 
           # Create list of keys to keep, merging the MAP_TO_APPSETTINGS_SECRETS and MAP_TO_CUSTOM_SECRETS
-          KEEP_SECRETS_KEYS=$(echo "$MAP_TO_APPSETTINGS_SECRETS,$MAP_TO_CUSTOM_SECRETS" | tr ',' '\n' | sort | uniq)
-
-          # Add DATABASE__DATABASEPASSWORD,DATABASE__DATABASEUSER to the list of keys to keep
-          KEEP_SECRETS_KEYS="$KEEP_SECRETS_KEYS,DATABASE__DATABASEPASSWORD,DATABASE__DATABASEUSER"
+          KEEP_SECRETS_KEYS=$(echo "$MAP_TO_APPSETTINGS_SECRETS,$MAP_TO_CUSTOM_SECRETS,DATABASE__DATABASEPASSWORD,DATABASE__DATABASEUSER" | tr ',' '\n' | sort | uniq)
 
           echo "KEEP_SECRETS_KEYS=$KEEP_SECRETS_KEYS"
           echo "KEEP_VARS_KEYS=$KEEP_VARS_KEYS"
