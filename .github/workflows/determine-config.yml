@@ -155,6 +155,11 @@ jobs:
           # Add DATABASE__DATABASEPASSWORD,DATABASE__DATABASEUSER to the list of keys to keep
           KEEP_SECRETS_KEYS="$KEEP_SECRETS_KEYS,DATABASE__DATABASEPASSWORD,DATABASE__DATABASEUSER"
 
+          echo "KEEP_SECRETS_KEYS=$KEEP_SECRETS_KEYS"
+          echo "KEEP_VARS_KEYS=$KEEP_VARS_KEYS"
+          echo "RAW_VARS_JSON=$RAW_VARS_JSON"
+          echo "RAW_SECRETS_JSON=$RAW_SECRETS_JSON"
+
           # Filter out keys that are not in the KEEP_SECRETS_KEYS list
           RAW_SECRETS_JSON=$(echo "$RAW_SECRETS_JSON" | jq --arg keep_keys "$KEEP_SECRETS_KEYS" '
             to_entries
@@ -196,6 +201,7 @@ jobs:
 
           if [[ -n "$MAP_TO_CUSTOM_SECRETS" ]]; then
             for prefix in $(echo "$MAP_TO_CUSTOM_SECRETS" | tr ',' ' '); do
+            # here we want to append to existing secrets json
               RAW_SECRETS_JSON=$(echo "$RAW_SECRETS_JSON" | jq --arg prefix "$prefix" '
                 to_entries
                 | map(
