@@ -266,20 +266,20 @@ jobs:
           # fi
 
           # Set prefix based on map type (i.e., APPSETTINGS__ for appsettings, CUSTOM_PREFIX for custom)
-          prefix=""
+          appsettings_prefix="APPSETTINGS__"
+          custom_prefix="${CUSTOM_PREFIX}"
           if [[ "${MAP_TO_APPSETTINGS_SECRETS}" || "${MAP_TO_APPSETTINGS_VARS}" ]]; then
-            prefix="APPSETTINGS__"
             # Map to with prefix
-            APPSETTINGS_SECRETS=("${APPSETTINGS_SECRETS[@]/#/APPSETTINGS__}")
-            APPSETTINGS_VARS=("${APPSETTINGS_VARS[@]/#/APPSETTINGS__}")
+            APPSETTINGS_SECRETS=("${APPSETTINGS_SECRETS[@]/#/$appsettings_prefix}")
+            APPSETTINGS_VARS=("${APPSETTINGS_VARS[@]/#/$appsettings_prefix}")
           elif [[ "${MAP_TO_CUSTOM_SECRETS}" || "${MAP_TO_CUSTOM_VARS}" ]]; then
-            prefix="${CUSTOM_PREFIX}"
             # Map to with prefix
-            CUSTOM_SECRETS=("${CUSTOM_SECRETS[@]/#/$CUSTOM_PREFIX}")
-            CUSTOM_VARS=("${CUSTOM_VARS[@]/#/$CUSTOM_PREFIX}")
+            CUSTOM_SECRETS=("${CUSTOM_SECRETS[@]/#/$custom_prefix}")
+            CUSTOM_VARS=("${CUSTOM_VARS[@]/#/$custom_prefix}")
           fi
 
-          echo "Prefix: $prefix"
+          echo "Appsettings Prefix: $appsettings_prefix"
+          echo "Custom Prefix: $custom_prefix"
           echo "Affix: $affix"
           echo "Appsettings Secrets: ${APPSETTINGS_SECRETS[@]}"
           echo "Appsettings Vars: ${APPSETTINGS_VARS[@]}"
