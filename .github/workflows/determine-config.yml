@@ -163,7 +163,7 @@ jobs:
           ')
 
           if [[ -n "$MAP_TO_APPSETTINGS_SECRETS" ]]; then
-          for prefix in $(echo "$MAP_TO_APPSETTINGS_SECRETS" | tr ',' ' '); do
+          for prefix in $(echo "$MAP_TO_APPSETTINGS_SECRETS,DATABASE__DATABASEPASSWORD,DATABASE__DATABASEUSER" | tr ',' ' '); do
             RAW_SECRETS_JSON=$(echo "$RAW_SECRETS_JSON" | jq --arg prefix "$prefix" '
               to_entries
               | map(
@@ -179,7 +179,7 @@ jobs:
           fi
 
           if [[ -n "$MAP_TO_APPSETTINGS_VARS" ]]; then
-            for prefix in $(echo "$MAP_TO_APPSETTINGS_VARS" | tr ',' ' '); do
+            for prefix in $(echo "$MAP_TO_APPSETTINGS_VARS,DATABASE__DATABASE_SERVER" | tr ',' ' '); do
               RAW_VARS_JSON=$(echo "$RAW_VARS_JSON" | jq --arg prefix "$prefix" '
                 to_entries
                 | map(
