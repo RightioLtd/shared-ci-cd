@@ -163,19 +163,19 @@ jobs:
           ')
 
           if [[ -n "$MAP_TO_APPSETTINGS_SECRETS" ]]; then
-          for prefix in $(echo "$MAP_TO_APPSETTINGS_SECRETS,DATABASE__DATABASEPASSWORD,DATABASE__DATABASEUSER" | tr ',' ' '); do
-            RAW_SECRETS_JSON=$(echo "$RAW_SECRETS_JSON" | jq --arg prefix "$prefix" '
-              to_entries
-              | map(
-                  if .key | startswith($prefix) then
-                      .key = "APPSETTINGS__" + .key
-                  else
-                    .
-                  end
-                )
-              | from_entries
-            ')
-          done
+            for prefix in $(echo "$MAP_TO_APPSETTINGS_SECRETS,DATABASE__DATABASEPASSWORD,DATABASE__DATABASEUSER" | tr ',' ' '); do
+              RAW_SECRETS_JSON=$(echo "$RAW_SECRETS_JSON" | jq --arg prefix "$prefix" '
+                to_entries
+                | map(
+                    if .key | startswith($prefix) then
+                        .key = "APPSETTINGS__" + .key
+                    else
+                      .
+                    end
+                  )
+                | from_entries
+              ')
+            done
           fi
 
           if [[ -n "$MAP_TO_APPSETTINGS_VARS" ]]; then
