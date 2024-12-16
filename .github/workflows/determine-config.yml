@@ -6,21 +6,6 @@ on:
       branch:
         required: true
         type: string
-      mapOrgSecretsToAppSettings:
-        required: false
-        type: string
-      mapOrgVarsToAppSettings:
-        required: false
-        type: string
-      mapOrgSecretsToCustom:
-        required: false
-        type: string
-      mapOrgVarsToCustom:
-        required: false
-        type: string
-      customPrefix:
-        required: false
-        type: string
 
 jobs:
   set-config:
@@ -32,11 +17,11 @@ jobs:
       - name: 🔧 Prepare Environment Variables
         run: |
           echo "SELECTED_BRANCH=${{ inputs.branch }}" >> $GITHUB_ENV
-          echo "MAP_TO_APPSETTINGS_SECRETS=${{ inputs.mapOrgSecretsToAppSettings }}" >> $GITHUB_ENV
-          echo "MAP_TO_CUSTOM_SECRETS=${{ inputs.mapOrgSecretsToCustom }}" >> $GITHUB_ENV
-          echo "MAP_TO_APPSETTINGS_VARS=${{ inputs.mapOrgVarsToAppSettings }}" >> $GITHUB_ENV
-          echo "MAP_TO_CUSTOM_VARS=${{ inputs.mapOrgVarsToCustom }}" >> $GITHUB_ENV
-          echo "CUSTOM_PREFIX=${{ inputs.customPrefix }}" >> $GITHUB_ENV
+          echo "MAP_TO_APPSETTINGS_SECRETS=${{ vars.MAP_SECRETS_TO_APP_SETTINGS }}" >> $GITHUB_ENV
+          echo "MAP_TO_CUSTOM_SECRETS=${{ vars.MAP_SECRETS_TO_ENV }}" >> $GITHUB_ENV
+          echo "MAP_TO_APPSETTINGS_VARS=${{ vars.MAP_VARS_TO_APP_SETTINGS }}" >> $GITHUB_ENV
+          echo "MAP_TO_CUSTOM_VARS=${{ vars.MAP_VARS_TO_ENV }}" >> $GITHUB_ENV
+          echo "CUSTOM_PREFIX=${{ vars.ENV_PREFIX }}" >> $GITHUB_ENV
 
       # Step 2: Determine Configuration Settings
       - name: 🔧 Determine Configuration Settings
@@ -162,8 +147,14 @@ jobs:
             | from_entries
           ')
 
+          # Provide a default value if MAP_TO_APPSETTINGS_SECRETS is empty
+          MAP_TO_APPSETTINGS_SECRETS=${MAP_TO_APPSETTINGS_SECRETS:-""}
+
+          # Combine MAP_TO_APPSETTINGS_SECRETS and hardcoded values
+          MAP_TO_APPSETTINGS_SECRETS=$(echo "$MAP_TO_APPSETTINGS_SECRETS,DATABASE__DATABASEPASSWORD,DATABASE__DATABASEUSER" | tr ',' ' ' | grep -v '^$')
+
           if [[ -n "$MAP_TO_APPSETTINGS_SECRETS" ]]; then
-            for prefix in $(echo "$MAP_TO_APPSETTINGS_SECRETS,DATABASE__DATABASEPASSWORD,DATABASE__DATABASEUSER" | tr ',' ' '); do
+            for prefix in $(echo "$MAP_TO_APPSETTINGS_SECRETS" | tr ',' ' '); do
               RAW_SECRETS_JSON=$(echo "$RAW_SECRETS_JSON" | jq --arg prefix "$prefix" '
                 to_entries
                 | map(
@@ -178,8 +169,14 @@ jobs:
             done
           fi
 
+          # Provide a default value if MAP_TO_APPSETTINGS_VARS is empty
+          MAP_TO_APPSETTINGS_VARS=${MAP_TO_APPSETTINGS_VARS:-""}
+
+          # Combine MAP_TO_APPSETTINGS_VARS and hardcoded values
+          MAP_TO_APPSETTINGS_VARS=$(echo "$MAP_TO_APPSETTINGS_VARS,DATABASE__DATABASESERVER" | tr ',' ' ' | grep -v '^$')
+
           if [[ -n "$MAP_TO_APPSETTINGS_VARS" ]]; then
-            for prefix in $(echo "$MAP_TO_APPSETTINGS_VARS,DATABASE__DATABASESERVER" | tr ',' ' '); do
+            for prefix in $(echo "$MAP_TO_APPSETTINGS_VARS" | tr ',' ' '); do
               RAW_VARS_JSON=$(echo "$RAW_VARS_JSON" | jq --arg prefix "$prefix" '
                 to_entries
                 | map(
