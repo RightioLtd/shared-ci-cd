@@ -138,7 +138,7 @@ jobs:
 
           # Process RAW_VARS_JSON and RAW_SECRETS_JSON, remove any keys that are not present in the MAP_TO_APPSETTINGS_SECRETS or MAP_TO_CUSTOM_VARS
           # Create list of keys to keep, merging the MAP_TO_APPSETTINGS_VARS and MAP_TO_CUSTOM_VARS
-          KEEP_VARS_KEYS=$(echo "$MAP_TO_APPSETTINGS_VARS,$MAP_TO_CUSTOM_VARS,DATABASE__DATABASE_SERVER" | tr ',' '\n' | sort | uniq)
+          KEEP_VARS_KEYS=$(echo "$MAP_TO_APPSETTINGS_VARS,$MAP_TO_CUSTOM_VARS,DATABASE__DATABASESERVER" | tr ',' '\n' | sort | uniq)
 
           # Filter out keys that are not in the KEEP_VARS_KEYS list
           RAW_VARS_JSON=$(echo "$RAW_VARS_JSON" | jq --arg keep_keys "$KEEP_VARS_KEYS" '
@@ -179,7 +179,7 @@ jobs:
           fi
 
           if [[ -n "$MAP_TO_APPSETTINGS_VARS" ]]; then
-            for prefix in $(echo "$MAP_TO_APPSETTINGS_VARS,DATABASE__DATABASE_SERVER" | tr ',' ' '); do
+            for prefix in $(echo "$MAP_TO_APPSETTINGS_VARS,DATABASE__DATABASESERVER" | tr ',' ' '); do
               RAW_VARS_JSON=$(echo "$RAW_VARS_JSON" | jq --arg prefix "$prefix" '
                 to_entries
                 | map(
